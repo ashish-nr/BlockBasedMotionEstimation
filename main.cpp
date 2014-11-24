@@ -17,8 +17,20 @@ class BlockPosition
 	  int pos_y;
 };
 
-void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size);
-BlockPosition find_min_block(int i, int j, cv::Mat &image1, cv::Mat &image2, const int search_size, const int block_size);
+class PyramidLevel
+{
+   public:
+		 cv::Mat level_flow;
+		 int block_size;
+		 int search_size;
+		 cv::Mat image1;
+		 cv::Mat image2;
+};
+
+void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size, const int num_levels);
+void calcHBM(std::vector<PyramidLevel> &levels);
+void calcLevelBM(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, int block_size, int search_size);
+BlockPosition find_min_block(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos, cv::Mat &image1, cv::Mat &image2, int search_size, int block_size);
 void fill_block_MV(int i, int j, int block_size, cv::Mat &flow, cv::Vec2f mv);
 int min(int elem1, int elem2); 
 int max(int elem1, int elem2);
@@ -39,6 +51,7 @@ int main()
 	cv::Mat thresh_image; //to display where motion is changing
 	int search_size = 80; //params for block matching
 	int block_size = 60;
+	int num_levels = 3;
 
 
 	//open video
@@ -68,7 +81,7 @@ int main()
 		cv::cvtColor(frame2, grayImage2, cv::COLOR_BGR2GRAY);
 
 	  //compute motion
-		calcMotionBlockMatching(grayImage1, grayImage2, flow, search_size, block_size);
+		calcMotionBlockMatching(grayImage1, grayImage2, flow, search_size, block_size, num_levels);
 		//calcOpticalFlowSF(frame1, frame2, flow, 3, 2, 4, 4.1, 25.5, 18, 55.0, 25.5, 0.35, 18, 55.0, 25.5, 10);
 		//calcOpticalFlowFarneback(grayImage1, grayImage2, flow, 0.5, 3, 15, 3, 5, 1.2, 0);
 
@@ -101,50 +114,129 @@ int main()
 	return 0;
 }
 
-void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size) //greyscale images only
+void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size, const int num_levels) //greyscale images only
 {
-	//Make sure that height and width of image are a multiple of the block size
-	if (image1.rows % block_size != 0 || image1.cols % block_size != 0)
+	//TO DO:  Make sure that num_levels > 0
+  //the search_size and block_size are for the highest level of the hierarchy
+
+	//Initialize flow matrix for highest resolution level
+	flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2);
+
+	//create class for each level of pyramid that we will create
+	std::vector<PyramidLevel> level_data;
+		
+	//save highest level of hierarchy to vector
+	PyramidLevel temp;
+	temp.image1 = image1; //store image pointers
+	temp.image2 = image2;
+	temp.level_flow = flow; //store MV pointer
+	temp.block_size = block_size; //store block size
+	temp.search_size = search_size; //store search size
+	level_data.push_back(temp);
+
+	//Keep track of the previous image so we can apply the pyrDown operation on previous image
+	cv::Mat prev_image1 = image1.clone();
+	cv::Mat prev_image2 = image2.clone();
+	//Keep track of previous block sizes and search sizes
+	int prev_bsize = block_size;
+	int prev_ssize = search_size;
+	for (int i = 0; i < num_levels-1; i++)
 	{
-		std::cout << "Image height AND width must be a multiple of the block size" << std::endl;
-		getchar();
+		PyramidLevel temp;
+		pyrDown(prev_image1, temp.image1, cv::Size(prev_image1.cols / 2, prev_image1.rows / 2)); //create downsampled images
+		pyrDown(prev_image2, temp.image2, cv::Size(prev_image2.cols / 2, prev_image2.rows / 2));
+		temp.level_flow = cv::Mat::zeros(prev_image1.rows / 2, prev_image1.cols / 2, CV_32FC2); //create space to store the computed MVs for the level
+		temp.block_size = prev_bsize << 1; //set it so that the block size increases by a factor of two as the resolution decreases by a factor of two
+		temp.search_size = prev_ssize << 1; //set it so that the search size increases by a factor of two as the resolution decreases by a factor of two
+
+		prev_image1 = temp.image1.clone(); //save previous values for next iteration
+		prev_image2 = temp.image2.clone();
+		prev_bsize = temp.block_size;
+		prev_ssize = temp.search_size;
+
+		level_data.push_back(temp); //save current level data to vector
 	}
 
-	//Check that images only have one channel
-	assert(image1.channels() == 1 && image2.channels() == 1);
+	//Call function to perform hierarchical block matching
+	calcHBM(level_data);
 
-	//Intialize flow Mat
-	flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2);
-	
-	for (int i = 0; i < image1.rows; i+=block_size)
+	////Make sure that height and width of image are a multiple of the block size
+	//if (image1.rows % block_size != 0 || image1.cols % block_size != 0)
+	//{
+	//	std::cout << "Image height AND width must be a multiple of the block size" << std::endl;
+	//	getchar();
+	//}
+
+	////Check that images only have one channel
+	//assert(image1.channels() == 1 && image2.channels() == 1);
+
+	////Intialize flow Mat
+	////flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2);
+	//
+	//for (int i = 0; i < image1.rows; i+=block_size)
+	//{
+	//	for (int j = 0; j < image1.cols; j+=block_size)
+	//	{
+	//		BlockPosition result = find_min_block(i, j, image1, image2, search_size, block_size); //returns i, j position of block found
+	//		//Calculate MV
+	//		cv::Vec2f mv = cv::Vec2f(result.pos_x - j, result.pos_y - i);
+	//		fill_block_MV(i, j, block_size, flow, mv); //assign MV to every pixel in block
+	//	}
+	//	
+	//}
+}
+
+void calcHBM(std::vector<PyramidLevel> &levels)
+{
+	for (int i = (int)levels.size() - 1; i >= 0; i++)
 	{
-		for (int j = 0; j < image1.cols; j+=block_size)
+		//perform block matching on each level, starting with the lowest resolution level
+		if (i == levels.size() - 1) //means we don't have any previous motion field to use
 		{
-			BlockPosition result = find_min_block(i, j, image1, image2, search_size, block_size); //returns i, j position of block found
-			//Calculate MV
-			cv::Vec2f mv = cv::Vec2f(result.pos_x - j, result.pos_y - i);
-			fill_block_MV(i, j, block_size, flow, mv); //assign MV to every pixel in block
+			//don't need to copy MVs from previous level
+			calcLevelBM(levels[i].image1, levels[i].image2, levels[i].level_flow, levels[i].block_size, levels[i].search_size);
 		}
-		
+		else
+		{
+			//TO DO:  need to copy MVs to next level
+			calcLevelBM(levels[i].image1, levels[i].image2, levels[i].level_flow, levels[i].block_size, levels[i].search_size);
+		}
 	}
 }
 
-BlockPosition find_min_block(int i, int j, cv::Mat &image1, cv::Mat &image2, const int search_size, const int block_size)
+void calcLevelBM(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, int block_size, int search_size)
+{
+	int image2_xpos, image2_ypos;
+	for (int i = 0; i < image1.rows; i+=block_size) //i and j here correspond to the y and x position in image 1
+	{
+		for (int j = 0; j < image1.cols; j+=block_size)
+		{
+			image2_xpos = j + (int)flow.at<cv::Vec2f>(i, j)[0];
+			image2_ypos = i + (int)flow.at<cv::Vec2f>(i, j)[1];
+			BlockPosition result = find_min_block(i, j, image2_ypos, image2_xpos, image1, image2, search_size, block_size); //returns i, j position of block found
+			//Calculate MV
+			cv::Vec2f mv = cv::Vec2f(result.pos_x - j, result.pos_y - i);
+			fill_block_MV(i, j, block_size, flow, mv); //assign MV to every pixel in block
+		}		
+	}
+}
+
+BlockPosition find_min_block(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos, cv::Mat &image1, cv::Mat &image2, int search_size, int block_size)
 {
   //form search window
 	int start_pos = ((search_size - block_size) >> 1); //assuming square block size
 	int SAD_min = std::numeric_limits<int>::max(); //max value an integer can take -- used to initialize SAD value
-	int min_x = j; //initalizing the positions of the block which we will calculate below -- set to center block initially
-	int min_y = i;
+	int min_x = image2_xpos; //initalizing the positions of the block which we will calculate below 
+	int min_y = image2_ypos;
 	cv::Mat curr_diff; //absolute difference block
 	cv::Scalar SAD_value; //current SAD value
 
-	for (int k = max(0, i - start_pos); k < min(image1.rows - block_size + 1, i + start_pos); k++)
+	for (int k = max(0, image2_ypos - start_pos); k < min(image1.rows - block_size + 1, image2_ypos + start_pos); k++)
 	{
-		for (int l = max(0, j - start_pos); l < min(image1.cols - block_size + 1, j + start_pos); l++)
+		for (int l = max(0, image2_xpos - start_pos); l < min(image1.cols - block_size + 1, image2_xpos + start_pos); l++)
 		{
 		  //calculate difference between block i,j in image1 and block k,l in image 2
-			cv::absdiff(image1(cv::Rect(j, i, block_size, block_size)), image2(cv::Rect(l, k, block_size, block_size)), curr_diff);
+			cv::absdiff(image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), image2(cv::Rect(l, k, block_size, block_size)), curr_diff);
 			SAD_value = cv::sum(curr_diff);
 			if ((int)SAD_value.val[0] < SAD_min)
 			{
