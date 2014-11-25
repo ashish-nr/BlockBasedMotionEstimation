@@ -6,12 +6,12 @@
 class Flow
 {
   public:
-		Flow();
+		//Flow();
 		// read a flow file into 2-band image
 		void ReadFlowFile(cv::Mat &img, const char* filename);
 		// write a 2-band image into flow file 
 		void WriteFlowFile(cv::Mat img, const char* filename);
-		~Flow();
+		//~Flow();
 
   private:
 		// return whether flow vector is unknown
