@@ -146,6 +146,7 @@
   <ItemGroup>
     <ClCompile Include="main_class.cpp" />
     <ClCompile Include="motion_framework.cpp" />
+    <ClCompile Include="rw_flow.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="block_position.h" />
