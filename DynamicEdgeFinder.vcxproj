@@ -143,7 +143,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="main_class.cpp" />
+    <ClCompile Include="motion_framework.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="block_position.h" />
+    <ClInclude Include="motion_framework.h" />
+    <ClInclude Include="opencv_headers.h" />
+    <ClInclude Include="pyramid_level.h" />
+    <ClInclude Include="standard_headers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
