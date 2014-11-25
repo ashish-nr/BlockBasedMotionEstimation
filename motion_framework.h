@@ -20,6 +20,8 @@ class MF
 		void fill_block_MV(int i, int j, int block_size, cv::Vec2f mv); //fill the whole block with the MV -- so we have a MV for each pixel
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
+		void colorMVs(); 
+
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
 

@@ -22,6 +22,7 @@
     <ProjectGuid>{69C2245A-4933-4CBE-BB13-B44E66B37340}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>DynamicEdgeFinder</RootNamespace>
+    <ProjectName>BlockBasedME</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -151,6 +152,7 @@
     <ClInclude Include="motion_framework.h" />
     <ClInclude Include="opencv_headers.h" />
     <ClInclude Include="pyramid_level.h" />
+    <ClInclude Include="rw_flow.h" />
     <ClInclude Include="standard_headers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

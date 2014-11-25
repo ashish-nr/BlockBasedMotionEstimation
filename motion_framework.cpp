@@ -141,6 +141,12 @@ int MF::min(int elem1, int elem2)
 	return ((elem1 < elem2) ? elem1 : elem2);
 }
 
+void MF::colorMVs()
+{
+
+
+}
+
 MF::~MF()
 {
 
