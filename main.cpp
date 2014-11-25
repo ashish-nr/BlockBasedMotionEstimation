@@ -27,8 +27,9 @@ class PyramidLevel
 		 cv::Mat image2;
 };
 
-void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size, const int num_levels);
+void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size[], const int block_size[], const int num_levels);
 void calcHBM(std::vector<PyramidLevel> &levels);
+void copyMVs(std::vector<PyramidLevel> &levels, int prev_level);
 void calcLevelBM(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, int block_size, int search_size);
 BlockPosition find_min_block(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos, cv::Mat &image1, cv::Mat &image2, int search_size, int block_size);
 void fill_block_MV(int i, int j, int block_size, cv::Mat &flow, cv::Vec2f mv);
@@ -49,8 +50,8 @@ int main()
 	std::vector<cv::Mat> channels(2); //for splitting the MV components into channels
 	cv::Mat flowX, flowY;
 	cv::Mat thresh_image; //to display where motion is changing
-	int search_size = 80; //params for block matching
-	int block_size = 60;
+	int search_size[] = { 30, 30, 40 }; //params for block matching
+	int block_size[] = { 15, 15, 15 };
 	int num_levels = 3;
 
 
@@ -114,7 +115,7 @@ int main()
 	return 0;
 }
 
-void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size, const int block_size, const int num_levels) //greyscale images only
+void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, const int search_size[], const int block_size[], const int num_levels) //greyscale images only
 {
 	//TO DO:  Make sure that num_levels > 0
   //the search_size and block_size are for the highest level of the hierarchy
@@ -130,29 +131,25 @@ void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, co
 	temp.image1 = image1; //store image pointers
 	temp.image2 = image2;
 	temp.level_flow = flow; //store MV pointer
-	temp.block_size = block_size; //store block size
-	temp.search_size = search_size; //store search size
+	temp.block_size = block_size[0]; //store block size
+	temp.search_size = search_size[0]; //store search size
 	level_data.push_back(temp);
 
 	//Keep track of the previous image so we can apply the pyrDown operation on previous image
 	cv::Mat prev_image1 = image1.clone();
 	cv::Mat prev_image2 = image2.clone();
-	//Keep track of previous block sizes and search sizes
-	int prev_bsize = block_size;
-	int prev_ssize = search_size;
-	for (int i = 0; i < num_levels-1; i++)
+	
+	for (int i = 1; i < num_levels; i++)
 	{
 		PyramidLevel temp;
 		pyrDown(prev_image1, temp.image1, cv::Size(prev_image1.cols / 2, prev_image1.rows / 2)); //create downsampled images
 		pyrDown(prev_image2, temp.image2, cv::Size(prev_image2.cols / 2, prev_image2.rows / 2));
 		temp.level_flow = cv::Mat::zeros(prev_image1.rows / 2, prev_image1.cols / 2, CV_32FC2); //create space to store the computed MVs for the level
-		temp.block_size = prev_bsize << 1; //set it so that the block size increases by a factor of two as the resolution decreases by a factor of two
-		temp.search_size = prev_ssize << 1; //set it so that the search size increases by a factor of two as the resolution decreases by a factor of two
+		temp.block_size = block_size[i]; 
+		temp.search_size = search_size[i];
 
 		prev_image1 = temp.image1.clone(); //save previous values for next iteration
 		prev_image2 = temp.image2.clone();
-		prev_bsize = temp.block_size;
-		prev_ssize = temp.search_size;
 
 		level_data.push_back(temp); //save current level data to vector
 	}
@@ -188,7 +185,7 @@ void calcMotionBlockMatching(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, co
 
 void calcHBM(std::vector<PyramidLevel> &levels)
 {
-	for (int i = (int)levels.size() - 1; i >= 0; i++)
+	for (int i = (int)levels.size() - 1; i >= 0; i--)
 	{
 		//perform block matching on each level, starting with the lowest resolution level
 		if (i == levels.size() - 1) //means we don't have any previous motion field to use
@@ -199,11 +196,26 @@ void calcHBM(std::vector<PyramidLevel> &levels)
 		else
 		{
 			//TO DO:  need to copy MVs to next level
+			copyMVs(levels, i+1);
 			calcLevelBM(levels[i].image1, levels[i].image2, levels[i].level_flow, levels[i].block_size, levels[i].search_size);
 		}
 	}
 }
 
+void copyMVs(std::vector<PyramidLevel> &levels, int prev_level)
+{
+	for (int i = 0; i < levels[prev_level].image1.rows; i += levels[prev_level].block_size)
+	{
+		for (int j = 0; j < levels[prev_level].image1.cols; j += levels[prev_level].block_size)
+		{
+		  //get the MV for the current position
+			cv::Vec2f new_MV = levels[prev_level].level_flow.at<cv::Vec2f>(i, j).mul(cv::Vec2f(2,2)); //need to check that this works
+
+			//we will fill the new_MV from new_i = 2*i, and new_j = 2*j and for size 2*levels[prev_level].block_size
+			fill_block_MV(i << 1, j << 1, levels[prev_level].block_size << 1, levels[prev_level - 1].level_flow, new_MV);
+		}
+	}
+}
 void calcLevelBM(cv::Mat &image1, cv::Mat &image2, cv::Mat &flow, int block_size, int search_size)
 {
 	int image2_xpos, image2_ypos;
