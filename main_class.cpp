@@ -11,6 +11,9 @@ int main()
 
 	//place to hold flow vectors from file read in
 	cv::Mat flow_file;
+
+	//place to hold color-coded output image;
+	cv::Mat flow_img;
 		
 	int search_size[] = { 30, 30, 40 }; //params for block matching
 	int block_size[] = { 15, 15, 15 };
@@ -26,9 +29,11 @@ int main()
 
 	Flow file;
 	file.ReadFlowFile(flow_file, "test.flo");
-	file.WriteFlowFile(flow_file, "testwrite.flo");
-
+	//file.WriteFlowFile(flow_file, "testwrite.flo");
+	file.MotionToColor(flow_file, flow_img, -1);
 	//std::cout << flow_file << std::endl;
+	//cv::cvtColor(flow_img, flow_img, cv::COLOR_RGB2BGR, 3);
+	cv::imwrite("test_color.png", flow_img);
 
 	return 0;
 }
