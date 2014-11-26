@@ -32,6 +32,9 @@
 // value to use to represent unknown flow
 #define UNKNOWN_FLOW 1e10
 
+//value for pi
+#define M_PI 3.14159265358979323846f
+
 // return whether flow vector is unknown
 bool Flow::unknown_flow(float u, float v) {
 	return (fabs(u) >  UNKNOWN_FLOW_THRESH)
@@ -194,4 +197,111 @@ void Flow::WriteFlowFile(cv::Mat img, const char* filename)
 	}
 	
 	fclose(stream);
+}
+
+void Flow::MotionToColor(cv::Mat &input_img, cv::Mat &output_img, float maxmotion)
+{
+	// determine motion range:
+	float maxx = -999, maxy = -999;
+	float minx = 999, miny = 999;
+	float maxrad = -1;
+	for (int i = 0; i < input_img.rows; i++) {
+		for (int j = 0; j < input_img.cols; j++) {
+			float fx = input_img.at<cv::Vec2f>(i, j)[0];
+			float fy = input_img.at<cv::Vec2f>(i, j)[1];
+			if (unknown_flow(fx, fy))
+				continue;
+			maxx = __max(maxx, fx);
+			maxy = __max(maxy, fy);
+			minx = __min(minx, fx);
+			miny = __min(miny, fy);
+			float rad = sqrt(fx * fx + fy * fy);
+			maxrad = __max(maxrad, rad);
+		}
+	}
+
+	printf("max motion: %.4f  motion range: u = %.3f .. %.3f;  v = %.3f .. %.3f\n",	maxrad, minx, maxx, miny, maxy);
+
+	if (maxmotion > 0) // i.e., specified on commandline
+		maxrad = maxmotion;
+
+	if (maxrad == 0) // if flow == 0 everywhere
+		maxrad = 1;
+
+	//if (verbose)
+		//fprintf(stderr, "normalizing by %g\n", maxrad);
+
+	output_img = cv::Mat::zeros(input_img.rows, input_img.cols, CV_8UC3);
+
+	for (int i = 0; i < output_img.rows; i++) {
+		for (int j = 0; j < output_img.cols; j++) {
+			float fx = input_img.at<cv::Vec2f>(i, j)[0];
+			float fy = input_img.at<cv::Vec2f>(i, j)[1];
+			cv::Vec3b *pix = &output_img.at<cv::Vec3b>(i, j);
+			if (unknown_flow(fx, fy)) {
+				pix[0] = pix[1] = pix[2] = 0;
+			}
+			else {
+				computeColor(fx / maxrad, fy / maxrad, pix);
+			}
+		}
+	}
+}
+
+void Flow::computeColor(float fx, float fy, cv::Vec3b *pix)
+{
+	if (ncols == 0)
+		makecolorwheel();
+		
+	float rad = sqrt(fx * fx + fy * fy);
+	float a = atan2(-fy, -fx) / M_PI;
+	float fk = (a + 1.0f) / 2.0f * (ncols - 1);
+	int k0 = (int)fk;
+	int k1 = (k0 + 1) % ncols;
+	float f = fk - k0;
+	//f = 0; // uncomment to see original color wheel
+	for (int b = 0; b < 3; b++) {
+		float col0 = colorwheel[k0][b] / 255.0f;
+		float col1 = colorwheel[k1][b] / 255.0f;
+		float col = (1 - f) * col0 + f * col1;
+		if (rad <= 1)
+			col = 1 - rad * (1 - col); // increase saturation with radius
+		else
+			col *= .75; // out of range
+		pix[0][2-b] = (int)(255.0 * col); 
+	}
+	//for (int k = 0; k < 3; k++) std::cout << pix[k] << std::endl;
+}
+
+void Flow::makecolorwheel()
+{
+	// relative lengths of color transitions:
+	// these are chosen based on perceptual similarity
+	// (e.g. one can distinguish more shades between red and yellow 
+	//  than between yellow and green)
+	int RY = 15;
+	int YG = 6;
+	int GC = 4;
+	int CB = 11;
+	int BM = 13;
+	int MR = 6;
+	ncols = RY + YG + GC + CB + BM + MR;
+	//printf("ncols = %d\n", ncols);
+	if (ncols > MAXCOLS)
+		exit(1);
+	int i;
+	int k = 0;
+	for (i = 0; i < RY; i++) setcols(255, 255 * i / RY, 0, k++);
+	for (i = 0; i < YG; i++) setcols(255 - 255 * i / YG, 255, 0, k++);
+	for (i = 0; i < GC; i++) setcols(0, 255, 255 * i / GC, k++);
+	for (i = 0; i < CB; i++) setcols(0, 255 - 255 * i / CB, 255, k++);
+	for (i = 0; i < BM; i++) setcols(255 * i / BM, 0, 255, k++);
+	for (i = 0; i < MR; i++) setcols(255, 0, 255 - 255 * i / MR, k++);
+}
+
+void Flow::setcols(int r, int g, int b, int k)
+{
+	colorwheel[k][0] = r;
+	colorwheel[k][1] = g;
+	colorwheel[k][2] = b;
 }
