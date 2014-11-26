@@ -10,7 +10,7 @@ class MF
 {
   public:
 		MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels);
-	  void calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
+	  cv::Mat calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
 		~MF();
 
   private:

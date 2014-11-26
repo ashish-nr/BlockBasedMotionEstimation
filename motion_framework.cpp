@@ -34,7 +34,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 
 }
 
-void MF::calcMotionBlockMatching()
+cv::Mat MF::calcMotionBlockMatching()
 {
 	for (int i = (int)level_data.size() - 1; i >= 0; i--)
 	{
@@ -52,6 +52,7 @@ void MF::calcMotionBlockMatching()
 			calcLevelBM();
 		}
 	}
+	return level_data[curr_level].level_flow;
 }
 
 void MF::calcLevelBM()
