@@ -44,12 +44,14 @@ cv::Mat MF::calcMotionBlockMatching()
 		{
 			//don't need to copy MVs from previous level
 			calcLevelBM();
+			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
 		}
 		else
 		{
 			//TO DO:  need to copy MVs to next level
 			copyMVs();
 			calcLevelBM();
+			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
 		}
 	}
 	return level_data[curr_level].level_flow;
@@ -106,6 +108,159 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 
 }
 
+void MF::regularize_MVs()
+{
+	int block_size = level_data[curr_level].block_size; //these are temp variables to speed up the computation
+	int height = level_data[curr_level].image1.rows;
+	int width = level_data[curr_level].image1.cols;
+
+	for (int i = 0; i < height; i+=block_size)
+	{
+		for (int j = 0; j < width; j+=block_size)
+		{
+			//create nine candidate MVs which include the current MV and the eight-connected neighbors			
+			std::vector<cv::Vec2f> candidates;
+			
+			//this is the normal case and where the loop will spend most of the time -- the case where we are not on any borders
+			if (i - block_size > 0 && j - block_size > 0 && j + block_size < width && i + block_size < height)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i + block_size));
+
+			}
+			//Handle the case of the top row
+			else if (j - block_size > 0 && j + block_size < width && i == 0)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i + block_size));
+			}
+			//Handle the case of the bottom row
+			else if (j - block_size > 0 && j + block_size < width && i == height - block_size)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));				
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));
+			}
+			//Handle the case of the left column
+			else if (j == 0 && i - block_size > 0 && i + block_size < height)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i + block_size));				
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));				
+			}
+			//Handle the case of the right column
+			else if (j == width - block_size && i - block_size > 0 && i + block_size < height)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));			
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i - block_size));				
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i + block_size));
+			}
+			//Handle the case of the top left corner
+			else if (i == 0 && j == 0)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));				
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i + block_size));				
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));				
+			}
+			//Handle the case of the top right corner
+			else if (i == 0) //this may seem strange, but it is the order of the if statements that matters.
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));							
+				candidates.push_back(cv::Vec2f((float)j, (float)i + block_size));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i + block_size));
+			}
+			//Handle the case of the bottom left corner
+			else if (i == height - block_size && j == 0)
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));				
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i));						
+				candidates.push_back(cv::Vec2f((float)j + block_size, (float)i - block_size));
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));							
+			}
+			//Handle the case of the bottom right corner
+			else 
+			{
+				candidates.push_back(cv::Vec2f((float)j, (float)i));
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i));				
+				candidates.push_back(cv::Vec2f((float)j - block_size, (float)i - block_size));				
+				candidates.push_back(cv::Vec2f((float)j, (float)i - block_size));								
+			}
+
+			find_min_candidate(candidates);
+		}
+	}
+	//have to modify all the MVs in the block at the end
+}
+
+void MF::find_min_candidate(std::vector<cv::Vec2f> &candidates)
+{
+	//store all the energies computed.  An energy is the SAD + lambda*Smoothness term
+	std::vector<double> energy;
+	
+	//positions in image1 and image2
+	int pos_x1, pos_x2, pos_y1, pos_y2;
+
+	//place to hold SAD value
+	cv::Scalar SAD_value;
+
+	//place to hold smoothness value
+	float Smoothness;
+
+	//Hold the overall energy - SAD + Smoothness
+	float Energy;
+
+	//to speed up the loop
+	int block_size = level_data[curr_level].block_size;
+
+	cv::Mat curr_diff; //absolute difference block
+
+	//block position in image1
+	pos_x1 = candidates[0][0];
+	pos_y1 = candidates[0][1];
+
+	for (int i = 0; i < candidates.size(); i++)
+	{
+		//block position in image2
+		pos_x2 = pos_x1 + level_data[curr_level].level_flow.at<cv::Vec2f>(candidates[i][1], candidates[i][0])[0];
+		pos_y2 = pos_y1 + level_data[curr_level].level_flow.at<cv::Vec2f>(candidates[i][1], candidates[i][0])[1];
+
+		//Calculate SAD term
+		cv::absdiff(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect(pos_x2, pos_y2, block_size, block_size)), curr_diff);
+		SAD_value = cv::sum(curr_diff);
+
+		//Calculate smoothness term - pass current MV and the candidate structure
+		Smoothness = calculate_smoothness(level_data[curr_level].level_flow.at<cv::Vec2f>(candidates[i][1], candidates[i][0])[0], level_data[curr_level].level_flow.at<cv::Vec2f>(candidates[i][1], candidates[i][0])[1], candidates);
+		
+		Energy = SAD_value.val[0] + Smoothness;
+		energy.push_back(Energy);
+	}
+
+	//Call function to return the position in energy vector that has minimum value
+
+}
+
 void MF::fill_block_MV(int i, int j, int block_size, cv::Vec2f mv)
 {
 	for (int k = i; k < i + level_data[curr_level].block_size; k++)
@@ -140,12 +295,6 @@ int MF::max(int elem1, int elem2)
 int MF::min(int elem1, int elem2)
 {
 	return ((elem1 < elem2) ? elem1 : elem2);
-}
-
-void MF::colorMVs()
-{
-
-
 }
 
 MF::~MF()
