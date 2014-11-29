@@ -10,7 +10,7 @@ class MF
 {
   public:
 		MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels);
-	  void calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
+	  cv::Mat calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
 		~MF();
 
   private:
@@ -20,10 +20,16 @@ class MF
 		void fill_block_MV(int i, int j, int block_size, cv::Vec2f mv); //fill the whole block with the MV -- so we have a MV for each pixel
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
-		void colorMVs(); 
+		void regularize_MVs();
+		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
+		float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
+		int min_energy_candidate(std::vector<float> &energy);
 
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
+
+		std::ofstream file; //file for debugging purposes
+		void print_debug(); //print out MVs for debugging/verification purposes
 
 };
 
