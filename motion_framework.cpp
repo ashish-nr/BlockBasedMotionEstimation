@@ -11,6 +11,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 	temp.level_flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2);; //store MV pointer
 	temp.block_size = block_size[0]; //store block size
 	temp.search_size = search_size[0]; //store search size
+	temp.lambda = (3 * block_size[0]) >> 2;
 	level_data.push_back(temp);
 
 	//Keep track of the previous image so we can apply the pyrDown operation on previous image
@@ -25,6 +26,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 		temp.level_flow = cv::Mat::zeros(prev_image1.rows / 2, prev_image1.cols / 2, CV_32FC2); //create space to store the computed MVs for the level
 		temp.block_size = block_size[i];
 		temp.search_size = search_size[i];
+		temp.lambda = (3 * block_size[i]) >> 2;
 
 		prev_image1 = temp.image1.clone(); //save previous values for next iteration
 		prev_image2 = temp.image2.clone();
@@ -47,8 +49,14 @@ cv::Mat MF::calcMotionBlockMatching()
 		{
 			//don't need to copy MVs from previous level
 			calcLevelBM();
-			print_debug(); 
+			//print_debug(); 
+			//cv::Mat test_img = level_data[curr_level].image1.clone();
+			//draw_MVs(test_img);
+			//cv::imwrite("mv_image.png", test_img);
 			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
+			//cv::Mat test_img2 = level_data[curr_level].image1.clone();
+			//draw_MVs(test_img2);
+			//cv::imwrite("mv_image2.png", test_img2);
 		}
 		else
 		{
@@ -128,16 +136,6 @@ void MF::regularize_MVs()
 			//this is the normal case and where the loop will spend most of the time -- the case where we are not on any borders
 			if (i - block_size >= 0 && j - block_size >= 0 && j + block_size < width && i + block_size < height)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i + block_size));*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
@@ -147,136 +145,78 @@ void MF::regularize_MVs()
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j - block_size));
-				
-
 			}
 			//Handle the case of the top row
 			else if (j - block_size >= 0 && j + block_size < width && i == 0)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i + block_size));*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j - block_size));
-
 			}
 			//Handle the case of the bottom row
 			else if (j - block_size >= 0 && j + block_size < width && i == height - block_size)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
-
 			}
 			//Handle the case of the left column
 			else if (j == 0 && i - block_size >= 0 && i + block_size < height)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i + block_size));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));		*/		
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
-
 			}
 			//Handle the case of the right column
 			else if (j == width - block_size && i - block_size >= 0 && i + block_size < height)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));			
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i - block_size));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i + block_size));*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j - block_size));
-
 			}
 			//Handle the case of the top left corner
 			else if (i == 0 && j == 0)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i + block_size));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));		*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
-
 			}
 			//Handle the case of the top right corner
 			else if (i == 0) //this may seem strange, but it is the order of the if statements that matters.
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));							
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i + block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i + block_size));*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j - block_size));
-
 			}
 			//Handle the case of the bottom left corner
 			else if (i == height - block_size && j == 0)
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i));						
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j + block_size, (float)i - block_size));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));		*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j + block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
-
 			}
 			//Handle the case of the bottom right corner
 			else 
 			{
-				/*candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i));
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j - block_size, (float)i - block_size));				
-				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)j, (float)i - block_size));	*/
-
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j - block_size));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
-
 			}
 
 			find_min_candidate(j, i, candidates); //finds the best MV (based on smoothness notion and SAD criteria) and assigns this MV to the current position
@@ -307,6 +247,9 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	//to speed up the loop
 	int block_size = level_data[curr_level].block_size;
 
+	//store lambda value
+	float lambda = level_data[curr_level].lambda;
+
 	cv::Mat curr_diff; //absolute difference block
 
 	int min_pos; //used to store candidate that has minimum energy
@@ -334,7 +277,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 			//Calculate smoothness term - pass current MV and the candidate structure
 			Smoothness = calculate_smoothness(i, candidates);
 
-			Energy = (float)SAD_value.val[0] + Smoothness;
+			Energy = (float)SAD_value.val[0] + lambda*Smoothness;
 			energy.push_back(Energy);
 		}
 	}
@@ -412,6 +355,17 @@ void MF::print_debug()
 		{
 			file << level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0] << std::endl;
 			file << level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1] << std::endl;
+		}
+	}
+}
+
+void MF::draw_MVs(cv::Mat &test_img)
+{
+	for (int i = 0; i < level_data[curr_level].image1.rows; i += level_data[curr_level].block_size)
+	{
+		for (int j = 0; j < level_data[curr_level].image1.cols; j += level_data[curr_level].block_size)
+		{
+			cv::line(test_img, cv::Point(j, i), cv::Point(max(0, min(j + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0], level_data[curr_level].image1.cols)), max(0, min(i + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1], level_data[curr_level].image1.rows))), cv::Scalar(255, 0, 0));
 		}
 	}
 }

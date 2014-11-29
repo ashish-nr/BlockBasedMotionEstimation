@@ -27,10 +27,10 @@ class MF
 
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
-
+	
 		std::ofstream file; //file for debugging purposes
 		void print_debug(); //print out MVs for debugging/verification purposes
-
+		void draw_MVs(cv::Mat &test_img); //for debugging - draws MVs on image
 };
 
 #endif //MOTION_FRAMEWORK_H

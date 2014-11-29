@@ -24,7 +24,7 @@ int main()
 	image2 = cv::imread("test2.png", CV_LOAD_IMAGE_GRAYSCALE);
 
 	MF motion_pair(image1, image2, search_size, block_size, num_levels);
-  cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	
+  cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	 //check smoothness by showing MVs before and after regularization
 
 	//Flow file;
 	//file.ReadFlowFile(flow_img, "test_small.flo");
