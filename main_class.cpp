@@ -26,13 +26,13 @@ int main()
 	MF motion_pair(image1, image2, search_size, block_size, num_levels);
   cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	
 
-	Flow file;
-	//file.ReadFlowFile(flow_file, "test.flo");
-	//file.WriteFlowFile(flow_file, "testwrite.flo");
-	file.MotionToColor(flow_res, flow_img, -1);
+	//Flow file;
+	//file.ReadFlowFile(flow_img, "test_small.flo");
+	//file.WriteFlowFile(flow_img, "test_small2.flo");
+	//file.MotionToColor(flow_img, flow_img2, -1);
 	//std::cout << flow_file << std::endl;
 	//cv::cvtColor(flow_img, flow_img, cv::COLOR_RGB2BGR, 3);
-	cv::imwrite("test_color.png", flow_img);
+	//cv::imwrite("test_color.png", flow_img);
 
 	return 0;
 }

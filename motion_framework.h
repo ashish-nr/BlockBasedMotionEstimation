@@ -21,11 +21,15 @@ class MF
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
 		void regularize_MVs();
-		void find_min_candidate(std::vector<cv::Vec2f> &candidates);
-		float calculate_smoothness(float MVx, float MVy, std::vector<cv::Vec2f> &candidates);
+		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
+		float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
+		int min_energy_candidate(std::vector<float> &energy);
 
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
+
+		std::ofstream file; //file for debugging purposes
+		void print_debug(); //print out MVs for debugging/verification purposes
 
 };
 
