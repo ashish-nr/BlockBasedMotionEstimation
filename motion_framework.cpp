@@ -53,14 +53,13 @@ cv::Mat MF::calcMotionBlockMatching()
 			//cv::Mat test_img = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img);
 			//cv::imwrite("mv_image.png", test_img);
-			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
+			regularize_MVs(); //perform regularization on eight-connected spatial neighbors -- TODO:  technically, we don't need to assign a MV to every pixel until the very end
 			//cv::Mat test_img2 = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img2);
 			//cv::imwrite("mv_image2.png", test_img2);
 		}
 		else
 		{
-			//TO DO:  need to copy MVs to next level
 			copyMVs();
 			calcLevelBM();
 			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
@@ -81,7 +80,8 @@ void MF::calcLevelBM()
 			BlockPosition result = find_min_block(i, j, image2_ypos, image2_xpos); //returns i, j position of block found
 			//Calculate MV
 			cv::Vec2f mv = cv::Vec2f((float)result.pos_x - j, (float)result.pos_y - i);
-			fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- TODO:  only assign MV to top left pixel in block
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;
+			//fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- TODO:  only assign MV to top left pixel in block
 		}
 	}
 }
@@ -286,7 +286,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	min_pos = min_energy_candidate(energy);
 
 	//Assign candidate at min_pos to be the new MV
-	fill_block_MV(pos_y1, pos_x1, block_size, candidates[min_pos]); //TODO:  don't fill the MVs for the whole block before regularization
+	fill_block_MV(pos_y1, pos_x1, block_size, candidates[min_pos]); 
 
 }
 
@@ -332,7 +332,7 @@ void MF::fill_block_MV(int i, int j, int block_size, cv::Vec2f mv)
 	}
 }
 
-void MF::copyMVs() //TODO:  Only copy MVs for the top left position in the block
+void MF::copyMVs() 
 {
 	for (int i = 0; i < level_data[curr_level + 1].image1.rows; i += level_data[curr_level + 1].block_size)
 	{
@@ -342,7 +342,8 @@ void MF::copyMVs() //TODO:  Only copy MVs for the top left position in the block
 			cv::Vec2f new_MV = level_data[curr_level + 1].level_flow.at<cv::Vec2f>(i, j).mul(cv::Vec2f(2, 2)); //need to check that this works
 
 			//we will fill the new_MV from new_i = 2*i, and new_j = 2*j and for size 2*levels[prev_level].block_size
-			fill_block_MV(i << 1, j << 1, level_data[curr_level + 1].block_size << 1, new_MV);
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i << 1, j << 1) = new_MV;
+			//fill_block_MV(i << 1, j << 1, level_data[curr_level + 1].block_size << 1, new_MV);
 		}
 	}
 }
