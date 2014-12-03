@@ -24,6 +24,7 @@ class MF
 		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
 		float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
 		int min_energy_candidate(std::vector<float> &energy);
+		void copy_to_all_pixels();
 
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
