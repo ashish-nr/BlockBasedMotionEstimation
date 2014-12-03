@@ -11,7 +11,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 	temp.level_flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2);; //store MV pointer
 	temp.block_size = block_size[0]; //store block size
 	temp.search_size = search_size[0]; //store search size
-	temp.lambda = (3 * block_size[0]) >> 2;
+	temp.lambda = (float)((3 * block_size[0]) >> 2);
 	level_data.push_back(temp);
 
 	//Keep track of the previous image so we can apply the pyrDown operation on previous image
@@ -26,7 +26,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 		temp.level_flow = cv::Mat::zeros(prev_image1.rows / 2, prev_image1.cols / 2, CV_32FC2); //create space to store the computed MVs for the level
 		temp.block_size = block_size[i];
 		temp.search_size = search_size[i];
-		temp.lambda = (3 * block_size[i]) >> 2;
+		temp.lambda = (float)((3 * block_size[i]) >> 2);
 
 		prev_image1 = temp.image1.clone(); //save previous values for next iteration
 		prev_image2 = temp.image2.clone();
@@ -34,37 +34,39 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 		level_data.push_back(temp); //save current level data to vector
 	}
 
-	//open debugging file
+	//open debugging file -- can safely comment this out if not being used
 	file.open("debug.txt");
 
 }
 
 cv::Mat MF::calcMotionBlockMatching()
 {
+	//Note:  This is just an example.  You should consider multiple iterations of the regularization function, and you may also consider splitting the blocks into smaller blocks and performing regularization
 	for (int i = (int)level_data.size() - 1; i >= 0; i--)
 	{
 		curr_level = i;
 		//perform block matching on each level, starting with the lowest resolution level
 		if (i == level_data.size() - 1) //means we don't have any previous motion field to use
 		{
-			//don't need to copy MVs from previous level
+			//don't need to copy MVs from previous level since there are none
 			calcLevelBM();
-			//print_debug(); 
+			//print_debug(); //you can put this line and the three lines below back in for testing/debugging purposes
 			//cv::Mat test_img = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img);
 			//cv::imwrite("mv_image.png", test_img);
-			regularize_MVs(); //perform regularization on eight-connected spatial neighbors -- TODO:  technically, we don't need to assign a MV to every pixel until the very end
-			//cv::Mat test_img2 = level_data[curr_level].image1.clone();
-			//draw_MVs(test_img2);
-			//cv::imwrite("mv_image2.png", test_img2);
+			regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
 		}
 		else
 		{
-			copyMVs();
+			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
 			calcLevelBM();
 			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
 		}
 	}
+	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
+	/*cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
+	draw_MVs(test_img);
+	cv::imwrite("mv_image.png", test_img);*/
 	return level_data[curr_level].level_flow;
 }
 
@@ -286,7 +288,8 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	min_pos = min_energy_candidate(energy);
 
 	//Assign candidate at min_pos to be the new MV
-	fill_block_MV(pos_y1, pos_x1, block_size, candidates[min_pos]); 
+	level_data[curr_level].level_flow.at<cv::Vec2f>(pos_y1, pos_x1) = candidates[min_pos];
+	//fill_block_MV(pos_y1, pos_x1, block_size, candidates[min_pos]); 
 
 }
 
@@ -332,6 +335,19 @@ void MF::fill_block_MV(int i, int j, int block_size, cv::Vec2f mv)
 	}
 }
 
+void MF::copy_to_all_pixels()
+{
+	int block_size = level_data[curr_level].block_size;
+
+	for (int i = 0; i < level_data[curr_level].level_flow.rows; i+=block_size)
+	{
+		for (int j = 0; j < level_data[curr_level].level_flow.cols; j+=block_size)
+		{
+			fill_block_MV(i, j, block_size, level_data[curr_level].level_flow.at<cv::Vec2f>(i, j));
+		}
+	}
+}
+
 void MF::copyMVs() 
 {
 	for (int i = 0; i < level_data[curr_level + 1].image1.rows; i += level_data[curr_level + 1].block_size)
@@ -366,7 +382,7 @@ void MF::draw_MVs(cv::Mat &test_img)
 	{
 		for (int j = 0; j < level_data[curr_level].image1.cols; j += level_data[curr_level].block_size)
 		{
-			cv::line(test_img, cv::Point(j, i), cv::Point(max(0, min(j + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0], level_data[curr_level].image1.cols)), max(0, min(i + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1], level_data[curr_level].image1.rows))), cv::Scalar(255, 0, 0));
+			cv::line(test_img, cv::Point(j, i), cv::Point(max(0, min((int)(j + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0]), level_data[curr_level].image1.cols)), max(0, min((int)(i + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1]), level_data[curr_level].image1.rows))), cv::Scalar(255, 0, 0));
 		}
 	}
 }
