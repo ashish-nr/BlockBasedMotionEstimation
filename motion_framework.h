@@ -28,6 +28,7 @@ class MF
 
 		std::vector<PyramidLevel> level_data;
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
+		int lambda_multiplier; //used to keep track of the integer that multiplies lambda when doing iterative regularization
 	
 		std::ofstream file; //file for debugging purposes
 		void print_debug(); //print out MVs for debugging/verification purposes

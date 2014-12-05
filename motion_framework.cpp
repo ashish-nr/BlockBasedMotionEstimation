@@ -4,6 +4,9 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 {
 	//TODO: make sure number of levels > 1
 
+	//initialize lambda_multiplier to '1' - means no multiply
+	lambda_multiplier = 1;
+
 	//save highest level of hierarchy to vector
 	PyramidLevel temp;
 	temp.image1 = image1; //store image pointers
@@ -54,13 +57,23 @@ cv::Mat MF::calcMotionBlockMatching()
 			//cv::Mat test_img = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img);
 			//cv::imwrite("mv_image.png", test_img);
-			regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
+
+			for (int l = 0; l < 4; l++) //perform four iterations of regularization
+			{
+				lambda_multiplier = l + 1;
+				regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
+			}			
+			
 		}
 		else
 		{
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
 			calcLevelBM();
-			regularize_MVs(); //perform regularization on eight-connected spatial neighbors
+			for (int l = 0; l < 4; l++) //perform four iterations of regularization
+			{
+				lambda_multiplier = l + 1;
+				regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
+			}			
 		}
 	}
 	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
@@ -97,6 +110,7 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 	int min_y = image2_ypos;
 	cv::Mat curr_diff; //absolute difference block
 	cv::Scalar SAD_value; //current SAD value
+	int l1_dist = std::numeric_limits<int>::max(); //keep track of the L1 distance between block to choose a block closer to the center block
 
 	for (int k = max(0, image2_ypos - start_pos); k < min(level_data[curr_level].image1.rows - level_data[curr_level].block_size + 1, image2_ypos + start_pos); k++)
 	{
@@ -110,6 +124,13 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 				SAD_min = (int)SAD_value.val[0]; //we need val[0] because of the way that the cv::Scalar is set up
 				min_x = l;
 				min_y = k;
+				l1_dist = abs(image1_xpos - l) + abs(image1_ypos - k);
+			}
+			else if ((int)SAD_value.val[0] == SAD_min && (abs(image1_xpos - l) + abs(image1_ypos - k)) < l1_dist) //this will choose the block that is closest to the center block
+			{
+				min_x = l;
+				min_y = k;
+				l1_dist = abs(image1_xpos - l) + abs(image1_ypos - k);
 			}
 		}
 	}
@@ -279,7 +300,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 			//Calculate smoothness term - pass current MV and the candidate structure
 			Smoothness = calculate_smoothness(i, candidates);
 
-			Energy = (float)SAD_value.val[0] + lambda*Smoothness;
+			Energy = (float)SAD_value.val[0] + lambda*(float)lambda_multiplier*Smoothness;
 			energy.push_back(Energy);
 		}
 	}
@@ -326,9 +347,9 @@ int MF::min_energy_candidate(std::vector<float> &energy)
 
 void MF::fill_block_MV(int i, int j, int block_size, cv::Vec2f mv)
 {
-	for (int k = i; k < i + level_data[curr_level].block_size; k++)
+	for (int k = i; k < i + block_size; k++)
 	{
-		for (int l = j; l < j + level_data[curr_level].block_size; l++)
+		for (int l = j; l < j + block_size; l++)
 		{
 			level_data[curr_level].level_flow.at<cv::Vec2f>(k, l) = mv;
 		}
@@ -355,11 +376,11 @@ void MF::copyMVs()
 		for (int j = 0; j < level_data[curr_level + 1].image1.cols; j += level_data[curr_level + 1].block_size)
 		{
 			//get the MV for the current position
-			cv::Vec2f new_MV = level_data[curr_level + 1].level_flow.at<cv::Vec2f>(i, j).mul(cv::Vec2f(2, 2)); //need to check that this works
+			cv::Vec2f new_MV = level_data[curr_level + 1].level_flow.at<cv::Vec2f>(i, j).mul(cv::Vec2f(2, 2));
 
-			//we will fill the new_MV from new_i = 2*i, and new_j = 2*j and for size 2*levels[prev_level].block_size
-			level_data[curr_level].level_flow.at<cv::Vec2f>(i << 1, j << 1) = new_MV;
-			//fill_block_MV(i << 1, j << 1, level_data[curr_level + 1].block_size << 1, new_MV);
+			//we will fill the new_MV from new_i = 2*i, and new_j = 2*j 
+			//level_data[curr_level].level_flow.at<cv::Vec2f>(i << 1, j << 1) = new_MV;
+			fill_block_MV(i << 1, j << 1, level_data[curr_level + 1].block_size << 1, new_MV);
 		}
 	}
 }
