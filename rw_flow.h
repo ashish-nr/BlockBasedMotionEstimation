@@ -16,6 +16,8 @@ class Flow
 		void WriteFlowFile(cv::Mat img, const char* filename);
 		//Color code motion vectors for easier visualization
 		void MotionToColor(cv::Mat &input_img, cv::Mat &output_img, float maxmotion);
+		//Calculate the mean-squared error between our MVs and ground truth MVs from middlebury or .flo file
+		double CalculateMSE(cv::Mat &gtruth, cv::Mat &flow);
 		//~Flow();
 
   private:

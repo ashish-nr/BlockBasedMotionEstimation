@@ -305,3 +305,28 @@ void Flow::setcols(int r, int g, int b, int k)
 	colorwheel[k][1] = g;
 	colorwheel[k][2] = b;
 }
+
+double Flow::CalculateMSE(cv::Mat &gtruth, cv::Mat &flow)
+{
+	int count = 0;
+	double error = 0;
+
+	for (int i = 0; i < gtruth.rows; i++)
+	{
+		for (int j = 0; j < gtruth.cols; j++)
+		{
+			if (unknown_flow(gtruth.at<cv::Vec2f>(i,j)[0], gtruth.at<cv::Vec2f>(i,j)[1]))
+			{
+				continue;
+			}
+
+			count++;
+
+			error += sqrt((gtruth.at<cv::Vec2f>(i, j)[0] - flow.at<cv::Vec2f>(i, j)[0])*(gtruth.at<cv::Vec2f>(i, j)[0] - flow.at<cv::Vec2f>(i, j)[0]) + (gtruth.at<cv::Vec2f>(i, j)[1] - flow.at<cv::Vec2f>(i, j)[1])*(gtruth.at<cv::Vec2f>(i, j)[1] - flow.at<cv::Vec2f>(i, j)[1]));
+								
+		}
+	}
+
+	error = error / count;
+	return error;
+}
