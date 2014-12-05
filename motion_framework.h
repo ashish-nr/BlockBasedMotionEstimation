@@ -21,6 +21,7 @@ class MF
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
 		void regularize_MVs();
+		void divide_blocks(); //used to assign MVs to blocks of half the size of current block
 		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
 		float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
 		int min_energy_candidate(std::vector<float> &energy);

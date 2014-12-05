@@ -16,8 +16,8 @@ int main()
 	//int search_size[] = { 30, 40, 40 }; //params for block matching
 	//int block_size[] = { 15, 30, 30 };
 
-	int search_size[] = { 16, 40, 35 }; //params for block matching
-	int block_size[] = { 10, 10, 25 };
+	int search_size[] = { 32, 32, 42 }; //params for block matching
+	int block_size[] = { 16, 16, 32 };
 	int num_levels = 3;
 	
 	//read first image
@@ -32,8 +32,10 @@ int main()
 	//need to make sure that the block sizes are multiples of each other for this to work right at all levels of the hierarchy
 	//this needs to be done manually by the user right now, but it's on the TODO list.
 	//C++: void copyMakeBorder(InputArray src, OutputArray dst, int top, int bottom, int left, int right, int borderType, const Scalar& value = Scalar())
-	int pad_x = 8;
-	int pad_y = 6;
+	//584 x 388
+	//640 x 640
+	int pad_x = 28;
+	int pad_y = 126;
 	cv::Mat image1_pad = cv::Mat(image1.rows + pad_y*2, image1.cols + pad_x*2, CV_8UC1);
 	cv::Mat image2_pad = cv::Mat(image1.rows + pad_y*2, image1.cols + pad_x*2, CV_8UC1);
 	cv::copyMakeBorder(image1, image1_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
