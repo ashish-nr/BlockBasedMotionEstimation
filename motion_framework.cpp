@@ -58,22 +58,55 @@ cv::Mat MF::calcMotionBlockMatching()
 			//draw_MVs(test_img);
 			//cv::imwrite("mv_image.png", test_img);
 
-			for (int l = 0; l < 4; l++) //perform four iterations of regularization
+			int init_bsize = level_data[curr_level].block_size;
+			int init_lambda = level_data[curr_level].lambda;
+			for (int k = 0; k < 3; k++)
 			{
-				lambda_multiplier = l + 1;
-				regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
-			}			
-			
+				level_data[curr_level].block_size = init_bsize;
+				level_data[curr_level].lambda = init_lambda;
+
+				//perform iterative regularization			
+				while (level_data[curr_level].block_size > 1)
+				{
+					for (int l = 0; l < 4; l++) //perform four iterations of regularization
+					{
+						lambda_multiplier = l + 1;
+						regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
+					}
+					//need to assign MVs to smaller blocks here
+					divide_blocks(); //block size will be reduced by half
+					level_data[curr_level].block_size = (level_data[curr_level].block_size >> 1);
+					level_data[curr_level].lambda = level_data[curr_level].lambda * 2;
+				}
+			}
 		}
 		else
 		{
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
 			calcLevelBM();
-			for (int l = 0; l < 4; l++) //perform four iterations of regularization
+
+			//perform iterative regularization
+			int init_bsize = level_data[curr_level].block_size;
+			int init_lambda = level_data[curr_level].lambda;
+			for (int k = 0; k < 3; k++)
 			{
-				lambda_multiplier = l + 1;
-				regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
-			}			
+				level_data[curr_level].block_size = init_bsize;
+				level_data[curr_level].lambda = init_lambda;
+
+				//perform iterative regularization			
+				while (level_data[curr_level].block_size > 1)
+				{
+					for (int l = 0; l < 4; l++) //perform four iterations of regularization
+					{
+						lambda_multiplier = l + 1;
+						regularize_MVs(); //perform regularization on eight-connected spatial neighbors 
+					}
+					//need to assign MVs to smaller blocks here
+					divide_blocks(); //block size will be reduced by half
+					level_data[curr_level].block_size = (level_data[curr_level].block_size >> 1);
+					level_data[curr_level].lambda = level_data[curr_level].lambda * 2;
+				}
+			}
 		}
 	}
 	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
@@ -96,7 +129,7 @@ void MF::calcLevelBM()
 			//Calculate MV
 			cv::Vec2f mv = cv::Vec2f((float)result.pos_x - j, (float)result.pos_y - i);
 			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;
-			//fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- TODO:  only assign MV to top left pixel in block
+			//fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- this is necessary because of the padding of images.  We can't guarantee that the the block at the next level will start on a position where there's a motion vector if we just assign a motion vector to the top left corner of the block on previous level.
 		}
 	}
 }
@@ -381,6 +414,25 @@ void MF::copyMVs()
 			//we will fill the new_MV from new_i = 2*i, and new_j = 2*j 
 			//level_data[curr_level].level_flow.at<cv::Vec2f>(i << 1, j << 1) = new_MV;
 			fill_block_MV(i << 1, j << 1, level_data[curr_level + 1].block_size << 1, new_MV);
+		}
+	}
+}
+
+void MF::divide_blocks()
+{
+	int block_size_orig = level_data[curr_level].block_size;
+	int bsize_new = level_data[curr_level].block_size >> 1;
+	int height = level_data[curr_level].image1.rows;
+	int width = level_data[curr_level].image1.cols;
+
+	for (int i = 0; i < height; i += block_size_orig)
+	{
+		for (int j = 0; j < width; j += block_size_orig)
+		{
+			cv::Vec2f curr_MV = level_data[curr_level].level_flow.at<cv::Vec2f>(i, j); //we will assign the MVs to three of the smaller blocks within the large block (the top left block is already assigned)
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i + bsize_new, j) = curr_MV;
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j + bsize_new) = curr_MV;
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i + bsize_new, j + bsize_new) = curr_MV;
 		}
 	}
 }
