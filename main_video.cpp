@@ -29,6 +29,25 @@ int main()
 
 	cv::Mat curr_frame;
 	cv::Mat prev_frame;
+	
+	//curr_frame = cv::imread(".\\vid_images\\image00.png", 0);
+	//prev_frame = cv::imread(".\\vid_images\\image192.png", 0);
+
+	//cv::Mat image1_pad = cv::Mat(prev_frame.rows + pad_y * 2, prev_frame.cols + pad_x * 2, CV_8UC1);
+	//cv::Mat image2_pad = cv::Mat(prev_frame.rows + pad_y * 2, prev_frame.cols + pad_x * 2, CV_8UC1);
+
+	//cv::copyMakeBorder(prev_frame, image1_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
+	//cv::copyMakeBorder(curr_frame, image2_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
+
+	//MF motion_pair(image1_pad, image2_pad, search_size, block_size, num_levels);
+	//cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	 //check smoothness by showing MVs before and after regularization
+
+	////Draw a color-coded image for the motion vectors
+	//Flow file;
+	//file.MotionToColor(flow_res, flow_img, -1); //the last parameter is if you want to set a maximum motion vector value.  Any value < 0 ignores this option
+	//cv::imwrite("flow.png", flow_img);
+
+	//-----------
 
 	//Capture the first frame
 	capture.read(prev_frame);
@@ -57,15 +76,16 @@ int main()
 		float diff = ((float)t2 - (float)t1);
 		float seconds = diff / CLOCKS_PER_SEC;
 		std::cout << "Seconds: " << seconds << std::endl;
-		//getchar();
-
+		
 		//Draw a color-coded image for the motion vectors
 		Flow file;
 		file.MotionToColor(flow_res, flow_img, -1); //the last parameter is if you want to set a maximum motion vector value.  Any value < 0 ignores this option
 		cv::imwrite("flow.png", flow_img);
 
 		prev_frame = curr_frame.clone();
-		exit(1);
+
+		//TODO: need to clear the speedup array before going to the next frame
+	  exit(1);
 	}	
 
 	return 0;

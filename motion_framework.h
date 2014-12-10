@@ -20,9 +20,9 @@ class MF
 		void fill_block_MV(int i, int j, int block_size, cv::Vec2f mv); //fill the whole block with the MV -- so we have a MV for each pixel
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
-		void regularize_MVs(int speedup); //speed up is to do a SAD lookup so we don't have to recalculate value
+		void regularize_MVs(); //speed up is to do a SAD lookup so we don't have to recalculate value
 		void divide_blocks(); //used to assign MVs to blocks of half the size of current block
-		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates, int speedup);
+		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
 		inline float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
 		int min_energy_candidate(std::vector<float> &energy);
 		void copy_to_all_pixels();
