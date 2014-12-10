@@ -76,16 +76,10 @@ cv::Mat MF::calcMotionBlockMatching()
 				//perform iterative regularization			
 				while (level_data[curr_level].block_size > 1)
 				{
-					lambda_multiplier = 1;
-					if (level_data[curr_level].block_size < init_bsize)
-						regularize_MVs(1); //do speedup for the first iteration at new block size
-					else
-					  regularize_MVs(0); //use results of previous speedup to do SAD lookup in fast array
-
-					for (int l = 1; l < 3; l++) //perform four iterations of regularization
+					for (int l = 0; l < 3; l++) //perform four iterations of regularization
 					{
 						lambda_multiplier = l + 1;
-						regularize_MVs(0); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
+						regularize_MVs(); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
 					}
 					//need to assign MVs to smaller blocks here
 					divide_blocks(); //block size will be reduced by half
@@ -109,17 +103,11 @@ cv::Mat MF::calcMotionBlockMatching()
 
 				//perform iterative regularization			
 				while (level_data[curr_level].block_size > 1)
-				{
-					lambda_multiplier = 1;
-					if (level_data[curr_level].block_size < init_bsize)
-						regularize_MVs(1); //do speedup for the first iteration at new block size
-					else
-						regularize_MVs(0); //use results of previous speedup to do SAD lookup in fast array
-
-					for (int l = 1; l < 3; l++) //perform four iterations of regularization
+				{					
+					for (int l = 0; l < 3; l++) //perform four iterations of regularization
 					{
 						lambda_multiplier = l + 1;
-						regularize_MVs(0); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
+						regularize_MVs(); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
 					}
 					//need to assign MVs to smaller blocks here
 					divide_blocks(); //block size will be reduced by half
@@ -131,10 +119,10 @@ cv::Mat MF::calcMotionBlockMatching()
 	}
 	level_data[curr_level].block_size = 2; //set back to 2x2 blocks so we can call the function below
 	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
-	//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
-	//level_data[curr_level].block_size = 6; //just to draw MVs with some spacing
-	//draw_MVs(test_img);
-	//cv::imwrite("mv_image.png", test_img);
+	cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
+	level_data[curr_level].block_size = 6; //just to draw MVs with some spacing
+	draw_MVs(test_img);
+	cv::imwrite("mv_image.png", test_img);
 	return level_data[curr_level].level_flow;
 }
 
@@ -175,7 +163,7 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 		for (int l = max(0, image2_xpos - start_pos); l < min(level_data[curr_level].image1.cols - block_size + 1, image2_xpos + start_pos); l++)
 		{
 			//calculate difference between block i,j in image1 and block k,l in image 2
-			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), cv::NORM_L1);
+			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
 			
 			//cv::absdiff(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, level_data[curr_level].block_size, level_data[curr_level].block_size)), level_data[curr_level].image2(cv::Rect(l, k, level_data[curr_level].block_size, level_data[curr_level].block_size)), curr_diff);
 			//SAD_value = cv::sum(curr_diff);
@@ -206,7 +194,7 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 
 }
 
-void MF::regularize_MVs(int speedup)
+void MF::regularize_MVs()
 {
 	int block_size = level_data[curr_level].block_size; //these are temp variables to speed up the computation
 	int height = level_data[curr_level].image1.rows;
@@ -306,7 +294,7 @@ void MF::regularize_MVs(int speedup)
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
 			}
 
-			find_min_candidate(j, i, candidates, speedup); //finds the best MV (based on smoothness notion and SAD criteria) and assigns this MV to the current position
+			find_min_candidate(j, i, candidates); //finds the best MV (based on smoothness notion and SAD criteria) and assigns this MV to the current position
 
 			//clear candidates vector
 			candidates.clear();
@@ -314,7 +302,7 @@ void MF::regularize_MVs(int speedup)
 	}
 }
 
-void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates, int speedup)
+void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates)
 {
 	//store all the energies computed.  An energy is the SAD + lambda*Smoothness term
 	std::vector<float> energy;
@@ -370,20 +358,16 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 			//cv::absdiff(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect(pos_x2, pos_y2, block_size, block_size)), curr_diff);
 			//SAD_value = cv::sum(curr_diff);
 
-			if (speedup == 0) //means we check fast array to see if SAD already exists there
-			{
-				cv::Vec4i temp = fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1);
-				if (temp[0] == pos_y2 && temp[1] == pos_x2 && temp[3] == block_size)
-					SAD_value = temp[2];
-				else
-					SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect(pos_x2, pos_y2, block_size, block_size)), cv::NORM_L1);
-			}
+			cv::Vec4i temp = fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1);
+			if (temp[0] == pos_y2 && temp[1] == pos_x2 && temp[3] == block_size)
+			  SAD_value = temp[2];
 			else
 			{
 				SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect(pos_x2, pos_y2, block_size, block_size)), cv::NORM_L1);
-				//store frame2 position, SAD value, and block side in the fast array for future quick lookup
+		    //store frame2 position, SAD value, and block side in the fast array for future quick lookup
 				fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1) = cv::Vec4i(pos_y2, pos_x2, SAD_value, block_size);
 			}
+
 			//Calculate smoothness term - pass current MV and the candidate structure
 			Smoothness = calculate_smoothness(i, candidates);
 
@@ -406,14 +390,19 @@ float MF::calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &ca
 	//TODO: Can we speed this up using the L1 norm function in OpenCV?
 	float cost = 0;
 
-	float MVx = candidates[current_candidate][0];
-	float MVy = candidates[current_candidate][1];
+	cv::Vec2f MV = candidates[current_candidate];
+
+	//float MVx = candidates[current_candidate][0];
+	//float MVy = candidates[current_candidate][1];
 
 	int csize = (int)candidates.size();
 
+	cv::Vec2f curr_MV;
+
 	for (int i = 0; i < csize; i++) //we could remove one of the candidates since its value will be zero if we want a small speedup
 	{
-		cost += abs(candidates[i][0] - MVx) + abs(candidates[i][1] - MVy); //uses L1 norm
+		curr_MV = candidates[i];
+		cost += abs(curr_MV[0] - MV[0]) + abs(curr_MV[1] - MV[1]); //uses L1 norm
 	}
 
 	return cost;
