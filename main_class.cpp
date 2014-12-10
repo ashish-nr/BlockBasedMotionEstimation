@@ -5,7 +5,6 @@
 
 int main()
 {
-
 	//place to hold images
 	cv::Mat image1, image2;
 
