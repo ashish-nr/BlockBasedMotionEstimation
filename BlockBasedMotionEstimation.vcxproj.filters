@@ -4,10 +4,10 @@
     <ClCompile Include="motion_framework.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="main_class.cpp">
+    <ClCompile Include="rw_flow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="rw_flow.cpp">
+    <ClCompile Include="main_video.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

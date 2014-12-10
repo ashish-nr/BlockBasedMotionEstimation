@@ -6,6 +6,10 @@
 *.mp4
 *.mov
 *.png
+*.avi
+
+# DLL files
+*.dll
 
 # User-specific files
 *.suo

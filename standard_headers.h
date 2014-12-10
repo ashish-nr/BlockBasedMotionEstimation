@@ -5,5 +5,6 @@
 #include <fstream>
 #include <string>
 #include <assert.h>
+#include <time.h>
 
 #endif //STANDARD_HEADERS_H
