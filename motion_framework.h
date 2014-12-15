@@ -16,14 +16,16 @@ class MF
   private:
 		void copyMVs(); //Copy scaled MVs (by a factor of two) from previous level of hierarchy to next highest resolution level of hierarchy
 		void calcLevelBM(); //Calculate block matching for a single level of the hierarchy
+		void calcLevelBM_Parallel(); //Calculate block matching for a single level of the hierarchy using multi-threaded implementation
 		BlockPosition find_min_block(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos); //find the block with the minimum SAD in the search window
+		BlockPosition find_min_block_spiral(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos); //find the block with the minimum SAD in the search window with a spiral search
 		void fill_block_MV(int i, int j, int block_size, cv::Vec2f mv); //fill the whole block with the MV -- so we have a MV for each pixel
 		int min(int elem1, int elem2); //for finding the minimum value between two elements
 		int max(int elem1, int elem2); //for finding the maximum value between two elements
 		void regularize_MVs(); //speed up is to do a SAD lookup so we don't have to recalculate value
 		void divide_blocks(); //used to assign MVs to blocks of half the size of current block
 		void find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &candidates);
-		inline float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
+		float calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates);
 		int min_energy_candidate(std::vector<float> &energy);
 		void copy_to_all_pixels();
 
@@ -33,6 +35,8 @@ class MF
 
 		//variables used to speed up computation
 		std::vector<cv::Mat> fast_array;
+		//std::vector<cv::Mat> fast_array_MV;
+		//bool check_prev_match(int pos_x1, int pos_y1);
 	
 		std::ofstream file; //file for debugging purposes
 		void print_debug(); //print out MVs for debugging/verification purposes

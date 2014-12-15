@@ -5,6 +5,7 @@
 
 int main()
 {
+
 	//place to hold images
 	cv::Mat image1, image2;
 
@@ -12,17 +13,18 @@ int main()
 	cv::Mat flow_img;
 		
 	//WARNING:  Image size at each level must be divisble by the block size!
-	//int search_size[] = { 30, 40, 40 }; //params for block matching
-	//int block_size[] = { 15, 30, 30 };
+	//int search_size[] = { 32, 32, 42 }; //params for block matching
+	//int block_size[] = { 16, 16, 32 };
+	//int num_levels = 3;
 
-	int search_size[] = { 32, 32, 42 }; //params for block matching
-	int block_size[] = { 16, 16, 32 };
-	int num_levels = 3;
+	int search_size[] = { 64, 64, 64, 64 }; //searchsizes for middlebury most recent -- interpolation factor of 4 -- 4 levels of hierarchy instead of 3 -- smaller block sizes
+	int block_size[] = { 32, 32, 32, 32 };
+	int num_levels = 4;
 	
 	//read first image
-	image1 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame10.png", CV_LOAD_IMAGE_GRAYSCALE);
+	image1 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame10.png", 0);
 	//read second image
-	image2 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame11.png", CV_LOAD_IMAGE_GRAYSCALE);
+	image2 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame11.png", 0);
 
 	int orig_height = image1.rows;
 	int orig_width = image1.cols;
@@ -33,12 +35,22 @@ int main()
 	//C++: void copyMakeBorder(InputArray src, OutputArray dst, int top, int bottom, int left, int right, int borderType, const Scalar& value = Scalar())
 	//584 x 388
 	//640 x 640
-	int pad_x = 28;
-	int pad_y = 126;
+	//Need to interpolate by a factor of 4.  
+	/*cv::resize(image1, image1, cv::Size(), 4, 4, cv::INTER_CUBIC);
+	cv::resize(image2, image2, cv::Size(), 4, 4, cv::INTER_CUBIC);*/
+
+	image1 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame10x4.png", 0);
+	image2 = cv::imread(".\\middlebury\\data-gray\\Dimetrodon\\frame11x4.png", 0);
+		
+	int pad_x = 112;//28;
+	int pad_y = 120;// 126;
 	cv::Mat image1_pad = cv::Mat(image1.rows + pad_y*2, image1.cols + pad_x*2, CV_8UC1);
 	cv::Mat image2_pad = cv::Mat(image1.rows + pad_y*2, image1.cols + pad_x*2, CV_8UC1);
 	cv::copyMakeBorder(image1, image1_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
 	cv::copyMakeBorder(image2, image2_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
+
+	int biggest_height = image1_pad.rows;
+	int biggest_width = image1_pad.cols;
 
 	if (!image1.data || !image2.data)
 	{
@@ -48,10 +60,30 @@ int main()
 	}
 
 	MF motion_pair(image1_pad, image2_pad, search_size, block_size, num_levels);
-  cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	 //check smoothness by showing MVs before and after regularization
+
+	clock_t t1, t2;
+	t1 = clock();
+
+  cv::Mat flow_res = motion_pair.calcMotionBlockMatching();	
+
+	t2 = clock();
+	float diff = ((float)t2 - (float)t1);
+	float seconds = diff / CLOCKS_PER_SEC;
+	std::cout << "Seconds: " << seconds << std::endl;
+
+	//Need to divide all MVs by a factor of 4.  
+	cv::Mat subpix_MVs(orig_height, orig_width, CV_32FC2);
+	for (int i = pad_y; i < biggest_height-pad_y; i+=4)
+	{
+		for (int j = pad_x; j < biggest_width-pad_x; j+=4)
+		{
+			subpix_MVs.at<cv::Vec2f>((i - pad_y) / 4, (j - pad_x) / 4)[0] = flow_res.at<cv::Vec2f>(i, j)[0] / 4;
+			subpix_MVs.at<cv::Vec2f>((i - pad_y) / 4, (j - pad_x) / 4)[1] = flow_res.at<cv::Vec2f>(i, j)[1] / 4;
+		}
+	}
 
 	//We have to truncate flow_res because we are only interested in the middle part, not the padded part.
-	cv::Mat flow_res_trunc = flow_res(cv::Rect(pad_x, pad_y, orig_width, orig_height));
+	cv::Mat flow_res_trunc = subpix_MVs.clone();// (cv::Rect(pad_x / 4, pad_y / 4, orig_width, orig_height));
 
 	//Draw a color-coded image for the motion vectors
 	Flow file;
