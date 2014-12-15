@@ -1,4 +1,5 @@
 #include "motion_framework.h"
+#include "parallel.h"
 
 MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels)
 {
@@ -15,13 +16,15 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 	temp.level_flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2); //store MV pointer
 	temp.block_size = block_size[0]; //store block size
 	temp.search_size = search_size[0]; //store search size
-	temp.lambda = (float)((block_size[0]) >> 2);//((3 * block_size[0]) >> 2);
+	temp.lambda = (float)((block_size[0]) / 2);
 	level_data.push_back(temp);
 
 	//For speed up code -- save SAD values so they don't have to be recalculated
 	cv::Mat temparr(image1.rows, image1.cols, CV_32SC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array
 	fast_array.push_back(temparr); //reserve images equal to number of levels
-	
+	//cv::Mat temparr2(image1.rows, image1.cols, CV_32FC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array of MVs
+	//fast_array_MV.push_back(temparr2); 
+
 	//Keep track of the previous image so we can apply the pyrDown operation on previous image
 	cv::Mat prev_image1 = image1.clone();
 	cv::Mat prev_image2 = image2.clone();
@@ -31,13 +34,16 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 		PyramidLevel temp;
 		pyrDown(prev_image1, temp.image1, cv::Size(prev_image1.cols / 2, prev_image1.rows / 2)); //create downsampled images
 		pyrDown(prev_image2, temp.image2, cv::Size(prev_image2.cols / 2, prev_image2.rows / 2));
+
 		temp.level_flow = cv::Mat::zeros(prev_image1.rows / 2, prev_image1.cols / 2, CV_32FC2); //create space to store the computed MVs for the level
 		temp.block_size = block_size[i];
 		temp.search_size = search_size[i];
-		temp.lambda = (float)((block_size[i]) >> 2);
+		temp.lambda = (float)((block_size[i]) / 2);
 
 		cv::Mat temparr(prev_image1.rows / 2, prev_image1.cols / 2, CV_32SC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array
 		fast_array.push_back(temparr); //reserve images equal to number of levels
+		//cv::Mat temparr2(image1.rows / 2, image1.cols / 2, CV_32FC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array of MVs
+		//fast_array_MV.push_back(temparr2);
 	
 		prev_image1 = temp.image1.clone(); //save previous values for next iteration
 		prev_image2 = temp.image2.clone();
@@ -60,7 +66,8 @@ cv::Mat MF::calcMotionBlockMatching()
 		if (i == level_data.size() - 1) //means we don't have any previous motion field to use
 		{
 			//don't need to copy MVs from previous level since there are none
-			calcLevelBM();
+			//calcLevelBM();
+			calcLevelBM_Parallel();
 			//print_debug(); //you can put this line and the three lines below back in for testing/debugging purposes
 			//cv::Mat test_img = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img);
@@ -76,7 +83,7 @@ cv::Mat MF::calcMotionBlockMatching()
 				//perform iterative regularization			
 				while (level_data[curr_level].block_size > 1)
 				{
-					for (int l = 0; l < 3; l++) //perform four iterations of regularization
+					for (int l = 0; l < 2; l++) //perform four iterations of regularization
 					{
 						lambda_multiplier = l + 1;
 						regularize_MVs(); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
@@ -87,11 +94,17 @@ cv::Mat MF::calcMotionBlockMatching()
 					level_data[curr_level].lambda = level_data[curr_level].lambda * 2;
 				}
 			}
+			level_data[curr_level].block_size = init_bsize; //need to reset the block size so that copyMVs() for the next level of the pyramid works with the right size
+
+			//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
+			//draw_MVs(test_img);
+			//cv::imwrite("mv_imageL3.png", test_img);
 		}
 		else
 		{
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
-			calcLevelBM();
+			//calcLevelBM();
+			calcLevelBM_Parallel();
 
 			//perform iterative regularization
 			int init_bsize = level_data[curr_level].block_size;
@@ -104,7 +117,7 @@ cv::Mat MF::calcMotionBlockMatching()
 				//perform iterative regularization			
 				while (level_data[curr_level].block_size > 1)
 				{					
-					for (int l = 0; l < 3; l++) //perform four iterations of regularization
+					for (int l = 0; l < 2; l++) //perform four iterations of regularization
 					{
 						lambda_multiplier = l + 1;
 						regularize_MVs(); //perform regularization on eight-connected spatial neighbors, use previous results for speedup 
@@ -115,15 +128,30 @@ cv::Mat MF::calcMotionBlockMatching()
 					level_data[curr_level].lambda = level_data[curr_level].lambda * 2;
 				}
 			}
+			level_data[curr_level].block_size = init_bsize; //need to reset the block size so that copyMVs() for the next level of the pyramid works with the right size
+
+			//if (i == 1)
+			//{
+			//	cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
+			//	draw_MVs(test_img);
+			//	cv::imwrite("mv_imageL2.png", test_img);
+			//}
 		}
 	}
 	level_data[curr_level].block_size = 2; //set back to 2x2 blocks so we can call the function below
 	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
-	cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
-	level_data[curr_level].block_size = 6; //just to draw MVs with some spacing
-	draw_MVs(test_img);
-	cv::imwrite("mv_image.png", test_img);
+
+	//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
+	//level_data[curr_level].block_size = 8; //just to draw MVs with some spacing
+	//draw_MVs(test_img);
+	//cv::imwrite("mv_imageL1.png", test_img);
+
 	return level_data[curr_level].level_flow;
+}
+
+void MF::calcLevelBM_Parallel()
+{
+	cv::parallel_for_(cv::Range(0, 2), Parallel_process(level_data[curr_level], fast_array[curr_level]));
 }
 
 void MF::calcLevelBM()
@@ -135,10 +163,12 @@ void MF::calcLevelBM()
 		{
 			image2_xpos = j + (int)level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0];
 			image2_ypos = i + (int)level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1];
-			BlockPosition result = find_min_block(i, j, image2_ypos, image2_xpos); //returns i, j position of block found
+			//BlockPosition result = find_min_block(i, j, image2_ypos, image2_xpos); //returns i, j position of block found
+			BlockPosition result = find_min_block_spiral(i, j, image2_ypos, image2_xpos); //returns i, j position of block found using spiral search
 			//Calculate MV
 			cv::Vec2f mv = cv::Vec2f((float)result.pos_x - j, (float)result.pos_y - i);
-			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;		
+
 			//fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- this is necessary because of the padding of images.  We can't guarantee that the the block at the next level will start on a position where there's a motion vector if we just assign a motion vector to the top left corner of the block on previous level.
 		}
 	}
@@ -158,9 +188,9 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 	int l1_dist = std::numeric_limits<int>::max(); //keep track of the L1 distance between block to choose a block closer to the center block
 	int block_size = level_data[curr_level].block_size; //speed up
 
-	for (int k = max(0, image2_ypos - start_pos); k < min(level_data[curr_level].image1.rows - block_size + 1, image2_ypos + start_pos); k++)
+	for (int k = max(0, image2_ypos - start_pos); k < min(level_data[curr_level].image1.rows - block_size + 1, image2_ypos + start_pos + 1); k++)
 	{
-		for (int l = max(0, image2_xpos - start_pos); l < min(level_data[curr_level].image1.cols - block_size + 1, image2_xpos + start_pos); l++)
+		for (int l = max(0, image2_xpos - start_pos); l < min(level_data[curr_level].image1.cols - block_size + 1, image2_xpos + start_pos + 1); l++)
 		{
 			//calculate difference between block i,j in image1 and block k,l in image 2
 			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
@@ -184,7 +214,135 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 	}
 
 	//store frame2 position, SAD value, and block side in the fast array for future quick lookup
-	fast_array[curr_level].at<cv::Vec4i>(image1_ypos, image1_xpos) = cv::Vec4i(min_y, min_x, SAD_min, block_size);
+	fast_array[curr_level].at<cv::Vec4i>(image1_ypos, image1_xpos) = cv::Vec4i(min_x, min_y, SAD_min, block_size);
+		
+	BlockPosition pos; //Create class object to return values
+	pos.pos_x = min_x;
+	pos.pos_y = min_y;
+
+	return pos;
+
+}
+
+BlockPosition MF::find_min_block_spiral(int image1_ypos, int image1_xpos, int image2_ypos, int image2_xpos)
+{
+	//form search window
+	int shift = level_data[curr_level].search_size - level_data[curr_level].block_size; //assuming square block size
+	int block_size = level_data[curr_level].block_size; //speed up
+	int width = level_data[curr_level].image1.cols;
+	int height = level_data[curr_level].image1.rows;
+		
+	if (image2_xpos < 0 || image2_ypos < 0 || (image2_xpos + block_size) > width || (image2_ypos + block_size) > height) //prevent spiral search from going outside of image
+	{
+		BlockPosition temp;
+		temp.pos_x = image1_xpos; //these will cause the MV to be zero for blocks going outside of the image
+		temp.pos_y = image1_ypos;
+		return temp;
+	}
+
+	int min_x = image2_xpos; //initalizing the positions of the block which we will calculate below 
+	int min_y = image2_ypos;
+	int SAD_value;
+	int SAD_min = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(min_x, min_y, block_size, block_size)), cv::NORM_L1); //current SAD value
+
+	int l = min_x;
+	int k = min_y; 
+	int m, t;	
+	
+	//This first outer loop is used to do the spiral search
+	//We are repeating patterns of moving right,down, left, then up.
+	//At the very end, we go right once more to finish things off.
+	//The algorithm is basically:
+	//right, down, left(m+1), up(m+1).  And then right(m+1) at the very end.
+	for (m = 1; m < shift; m += 2)
+	{
+		//the variable m will tell us how much to shift each time
+		//the variable t is a counter.  if we have to shift 5 times, we will
+		//shift one position at a time and calculate the SAD for each shift.
+		for (t = 0; t < m; t++)
+		{
+			l = l + 1; //m;
+
+			if (l < 0 || k < 0 || (l + block_size) > width || (k + block_size) > height) //prevent spiral search from going outside of image
+				continue;
+
+			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
+			if (SAD_value < SAD_min)
+			{
+				SAD_min = SAD_value;
+				min_x = l;
+				min_y = k;
+			}
+		}
+
+		for (t = 0; t < m; t++)
+		{
+			k = k + 1; //m;
+
+			if (l < 0 || k < 0 || (l + block_size) > width || (k + block_size) > height) //prevent spiral search from going outside of image
+				continue;
+
+			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
+			if (SAD_value < SAD_min)
+			{
+				SAD_min = SAD_value;
+				min_x = l;
+				min_y = k;
+			}
+		}
+
+		for (t = 0; t < m + 1; t++)
+		{
+			l = l - 1; //(m + 1);
+
+			if (l < 0 || k < 0 || (l + block_size) > width || (k + block_size) > height) //prevent spiral search from going outside of image
+				continue;
+
+			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
+			if (SAD_value < SAD_min)
+			{
+				SAD_min = SAD_value;
+				min_x = l;
+				min_y = k;
+			}
+		}
+
+		for (t = 0; t < m + 1; t++)
+		{
+			k = k - 1; //(m + 1);
+
+			if (l < 0 || k < 0 || (l + block_size) > width || (k + block_size) > height) //prevent spiral search from going outside of image
+				continue;
+
+			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
+			if (SAD_value < SAD_min)
+			{
+				SAD_min = SAD_value;
+				min_x = l;
+				min_y = k;
+			}
+		}
+	}
+
+	//This is what we do at the end to move across the top row.
+	for (t = 0; t < (m - 1); t++)
+	{
+		l = l + 1; //m;
+
+		if (l < 0 || k < 0 || (l + block_size) > width || (k + block_size) > height) //prevent spiral search from going outside of image
+			continue;
+
+		SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
+		if (SAD_value < SAD_min)
+		{
+			SAD_min = SAD_value;
+			min_x = l;
+			min_y = k;
+		}
+	}			
+
+	//store frame2 position, SAD value, and block side in the fast array for future quick lookup
+	fast_array[curr_level].at<cv::Vec4i>(image1_ypos, image1_xpos) = cv::Vec4i(min_x, min_y, SAD_min, block_size);
 
 	BlockPosition pos; //Create class object to return values
 	pos.pos_x = min_x;
@@ -278,7 +436,7 @@ void MF::regularize_MVs()
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i + block_size, (float)j - block_size));
 			}
 			//Handle the case of the bottom left corner
-			else if (i == height - block_size && j == 0)
+			else if (j == 0) //i == height - block_size && j == 0)
 			{
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j + block_size));
@@ -309,7 +467,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	energy.reserve(9);
 	
 	//positions in image2
-	int pos_x2, pos_y2;
+	//int pos_x2, pos_y2;
 
 	//place to hold SAD value
 	int SAD_value;
@@ -336,13 +494,19 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	
 	int csize = (int)candidates.size(); //store to speed things up
 
+	cv::Vec2f pos1 = cv::Vec2f((float)pos_x1, (float)pos_y1);
+	cv::Vec2f pos2;
+
+	//check if there is a min_candidate already stored in the fast_array_MV for this block size (block size != 0), next compare the current candidates to the MVs in the fast_array_MV
+	//if (fast_array_MV[curr_level].at<cv::Vec4f>(pos_y1, pos_x1)[3] == (float)block_size && check_prev_match(pos_x1, pos_y1)) //means that a match exists
+	//return;
+	
 	for (int i = 0; i < csize; i++)
 	{
 		//block position in image2
-		pos_x2 = pos_x1 + (int)candidates[i][0]; 
-		pos_y2 = pos_y1 + (int)candidates[i][1];
+		pos2 = pos1 + candidates[i];	
 
-		if (pos_x2 < 0 || pos_x2 > (width - block_size) || pos_y2 < 0 || pos_y2 > (height - block_size)) //need to make sure that position doesn't go outside of image
+		if ((int)pos2[0] < 0 || (int)pos2[0] > (width - block_size) || (int)pos2[1] < 0 || (int)pos2[1] > (height - block_size)) //need to make sure that position doesn't go outside of image
 		{
 			Energy = std::numeric_limits<float>::max(); //force this candidate not to be chosen
 			energy.push_back(Energy);
@@ -359,13 +523,13 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 			//SAD_value = cv::sum(curr_diff);
 
 			cv::Vec4i temp = fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1);
-			if (temp[0] == pos_y2 && temp[1] == pos_x2 && temp[3] == block_size)
-			  SAD_value = temp[2];
+			if (temp[0] == (int)pos2[0] && temp[1] == (int)pos2[1] && temp[3] == block_size)
+				SAD_value = temp[2];
 			else
 			{
-				SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect(pos_x2, pos_y2, block_size, block_size)), cv::NORM_L1);
-		    //store frame2 position, SAD value, and block side in the fast array for future quick lookup
-				fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1) = cv::Vec4i(pos_y2, pos_x2, SAD_value, block_size);
+				SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(pos_x1, pos_y1, block_size, block_size)), level_data[curr_level].image2(cv::Rect((int)pos2[0], (int)pos2[1], block_size, block_size)), cv::NORM_L1);
+				//store frame2 position, SAD value, and block side in the fast array for future quick lookup
+				fast_array[curr_level].at<cv::Vec4i>(pos_y1, pos_x1) = cv::Vec4i((int)pos2[0], (int)pos2[1], SAD_value, block_size);
 			}
 
 			//Calculate smoothness term - pass current MV and the candidate structure
@@ -381,7 +545,9 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 
 	//Assign candidate at min_pos to be the new MV
 	level_data[curr_level].level_flow.at<cv::Vec2f>(pos_y1, pos_x1) = candidates[min_pos];
-	//fill_block_MV(pos_y1, pos_x1, block_size, candidates[min_pos]); 
+
+	//Assign candidate at min_pos to the fast_array_MVs for speedups
+	//fast_array_MV[curr_level].at<cv::Vec4f>(pos_y1, pos_x1) = cv::Vec4f(candidates[min_pos][0], candidates[min_pos][1], (float)min_pos, (float)block_size);
 
 }
 
@@ -425,6 +591,145 @@ int MF::min_energy_candidate(std::vector<float> &energy)
 	}
 	return min_pos;
 }
+
+//bool MF::check_prev_match(int pos_x1, int pos_y1)
+//{
+//	int width = level_data[curr_level].image1.cols;
+//	int height = level_data[curr_level].image1.rows;
+//	int block_size = level_data[curr_level].block_size;
+//
+//	//Split the first two channels from fast_array_MV so we can compare them with level_flow MVs below
+//	/*cv::Mat fast_MVs = cv::Mat(height, width, CV_32FC2, cv::Scalar(0, 0, 0, 0));
+//	cv::Mat nada = cv::Mat(height, width, CV_32FC2, cv::Scalar(0, 0, 0, 0));
+//
+//	cv::Mat out[] = { fast_MVs, nada };
+//	int from_to[] = { 0, 0, 1, 1, 2, 2, 3, 3};
+//	cv::mixChannels(&fast_array_MV[curr_level], 1, out, 2, from_to, 4);*/
+//
+//	//TODO:  for all of the if statements below, compare the level_data's level_flow values to the fast_array_MV values
+//
+//	//this is the normal case and where the loop will spend most of the time -- the case where we are not on any borders
+//	if (pos_y1 - block_size >= 0 && pos_x1 - block_size >= 0 && pos_x1 + block_size < width && pos_y1 + block_size < height)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the top row
+//	else if (pos_x1 - block_size >= 0 && pos_x1 + block_size < width && pos_y1 == 0)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the bottom row
+//	else if (pos_x1 - block_size >= 0 && pos_x1 + block_size < width && pos_y1 == height - block_size)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the left column
+//	else if (pos_x1 == 0 && pos_y1 - block_size >= 0 && pos_y1 + block_size < height)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the right column
+//	else if (pos_x1 == width - block_size && pos_y1 - block_size >= 0 && pos_y1 + block_size < height)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the top left corner
+//	else if (pos_y1 == 0 && pos_x1 == 0)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the top right corner
+//	else if (pos_y1 == 0) //this may seem strange, but it is the order of the if statements that matters.
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 + block_size, (float)pos_x1 - block_size)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the bottom left corner
+//	else if (pos_x1 == 0) //pos_y1 == height - block_size && pos_x1 == 0)
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 + block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//	//Handle the case of the bottom right corner
+//	else
+//	{
+//		if ((level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1 - block_size)) &&
+//			(level_data[curr_level].level_flow.at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1) == fast_array_MV[curr_level].at<cv::Vec2f>((float)pos_y1 - block_size, (float)pos_x1)))
+//			return true;
+//		else
+//			return false;
+//	}
+//
+//}
 
 void MF::fill_block_MV(int i, int j, int block_size, cv::Vec2f mv)
 {
