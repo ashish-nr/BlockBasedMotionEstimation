@@ -7,10 +7,7 @@
     <ClCompile Include="rw_flow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="motion_hist.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="main_video.cpp">
+    <ClCompile Include="main_class.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -31,9 +28,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="standard_headers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="motion_hist.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="parallel.h">

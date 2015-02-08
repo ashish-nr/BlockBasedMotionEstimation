@@ -1,7 +1,10 @@
 #include "motion_hist.h"
 
-void MHist::calc_hist()
+void MHist::calc_hist(cv::Mat &m_field)
 {
+
+	//m_field = motion_field;
+
  //extract the y-component of the MV into a separate image
 	cv::Mat y_comp(m_field.rows, m_field.cols, CV_32F);
 	
@@ -21,27 +24,25 @@ void MHist::calc_hist()
 	std::cout << "Error is " << error << std::endl;*/
 
 	//Establish the number of bins
-	int histSize = 21;
+	int histSize = 201;
 
 	//Set the ranges 
-	float range[] = { -10, 10 };
+	float range[] = { -100, 100 };
 	const float* histRange = { range };
 
 	bool uniform = true; //each bin has the same width
-	bool accumulate = false; //clear histograms at beginning
-
-	cv::Mat y_hist;
+	bool accumulate = true; //clear histograms at beginning or not?
 
 	//Compute the histogram
 	cv::calcHist(&y_comp, 1, 0, cv::Mat(), y_hist, 1, &histSize, &histRange, uniform, accumulate);
 
   //Create mask which will be used to filter out the zero y-component
-	cv::Mat mask = cv::Mat::ones(y_hist.rows, y_hist.cols, CV_8UC1);
-	mask.at<uchar>(0, 10) = 0;
+	//cv::Mat mask = cv::Mat::ones(y_hist.rows, y_hist.cols, CV_8UC1);
+	//mask.at<uchar>(0, 10) = 0;
 
 	//Print top five bins
 	//void minMaxLoc(InputArray src, double* minVal, double* maxVal=0, Point* minLoc=0, Point* maxLoc=0, InputArray mask=noArray())
-	double min_value;
+	/*double min_value;
 	double max_value;
 	cv::Point min_idx;
 	cv::Point max_idx;
@@ -50,11 +51,11 @@ void MHist::calc_hist()
 	std::cout << "max value is " << max_value << std::endl;
 	std::cout << "max index is " << max_idx << std::endl;
 	std::cout << "min value is " << min_value << std::endl; 
-	std::cout << "min index is " << min_idx << std::endl;
+	std::cout << "min index is " << min_idx << std::endl;*/
 
 	
 	//Draw the histogram
-	/*int hist_w = 512; int hist_h = 400;
+	int hist_w = 512; int hist_h = 400;
 	int bin_w = cvRound((double)hist_w / histSize);
 
 	cv::Mat histImage(hist_h, hist_w, CV_8UC3, cv::Scalar(0, 0, 0));
@@ -74,9 +75,9 @@ void MHist::calc_hist()
 	//Display
 	cv::namedWindow("Histogram", cv::WINDOW_AUTOSIZE);
 	cv::imshow("Histogram", histImage);
-	cv::waitKey(0);
+	//cv::waitKey(0);
 
-	*/
+	
 
 }
 void MHist::draw_hist()

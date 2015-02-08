@@ -330,3 +330,11 @@ double Flow::CalculateMSE(cv::Mat &gtruth, cv::Mat &flow)
 	error = error / count;
 	return error;
 }
+
+void Flow::ShowImage(cv::Mat& flow_img)
+{
+	cv::namedWindow("flow image");
+	cv::imshow("flow image", flow_img);
+	cv::imwrite("flowimg.png", flow_img);
+	cv::waitKey(0);
+}

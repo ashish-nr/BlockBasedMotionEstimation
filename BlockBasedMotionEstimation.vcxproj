@@ -144,15 +144,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main_video.cpp" />
+    <ClCompile Include="main_class.cpp" />
     <ClCompile Include="motion_framework.cpp" />
-    <ClCompile Include="motion_hist.cpp" />
     <ClCompile Include="rw_flow.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="block_position.h" />
     <ClInclude Include="motion_framework.h" />
-    <ClInclude Include="motion_hist.h" />
     <ClInclude Include="opencv_headers.h" />
     <ClInclude Include="parallel.h" />
     <ClInclude Include="pyramid_level.h" />
