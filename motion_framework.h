@@ -9,7 +9,7 @@
 class MF
 {
   public:
-		MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels);
+		MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels);// , int pad_x, int pad_y);
 	  cv::Mat calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
 		~MF();
 
@@ -33,6 +33,12 @@ class MF
 		int curr_level; //used to keep track of current level in hierarchy that we are processing
 		int lambda_multiplier; //used to keep track of the integer that multiplies lambda when doing iterative regularization
 
+		//variable that will be used to truncate the padded MVs at the end
+		int orig_height;
+		int orig_width;
+		int padding_x;
+		int padding_y;
+
 		//variables used to speed up computation
 		std::vector<cv::Mat> fast_array;
 		//std::vector<cv::Mat> fast_array_MV;
@@ -41,6 +47,7 @@ class MF
 		std::ofstream file; //file for debugging purposes
 		void print_debug(); //print out MVs for debugging/verification purposes
 		void draw_MVs(cv::Mat &test_img); //for debugging - draws MVs on image
+		void draw_MVimage(cv::Mat &test_img); //for debugging - draws the motion compensated frame
 };
 
 #endif //MOTION_FRAMEWORK_H

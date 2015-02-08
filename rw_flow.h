@@ -10,6 +10,8 @@ class Flow
 {
   public:
 		//Flow();
+		//Show the flow file image in OpenCV
+		void ShowImage(cv::Mat &flow_img);
 		// read a flow file into 2-band image
 		void ReadFlowFile(cv::Mat &img, const char* filename);
 		// write a 2-band image into flow file 

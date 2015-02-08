@@ -1,33 +1,85 @@
 #include "motion_framework.h"
 #include "parallel.h"
 
-MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels)
+MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int block_size[], const int num_levels)// , int pad_x, int pad_y)
 {
-	//TODO: make sure number of levels > 1
-	assert(num_levels > 1);
+	//TODO: make sure number of levels > 0
+	assert(num_levels > 0);
+	assert(image1.size() == image2.size());
+
+	//TODO:  check that the number of elements in search size and block size is the same as the number of levels
+	orig_height = image1.rows;
+	orig_width = image1.cols;
+
+	//Determine how much padding to add to images at highest resolution level
+	double temp_h = (double)orig_height;
+	double temp_w = (double)orig_width;
+
+	int done = 0;
+	while (!done) 
+	{
+		if (temp_h == 2 * orig_height || temp_w == 2 * orig_width) //the 2*orig_width and height is there just in case we can't find a multiple -- we need to stop somewhere
+		{
+			std::cout << "Could not find any multiples of the block size that match padded image dimensions" << std::endl;
+			getchar();
+			exit(1);
+		}
+
+		double rem_h = 0; //keep track of the remainder from the mod for the height
+		double rem_w = 0; //same as above but for the width
+
+		for (int i = 0; i < num_levels; i++)
+		{
+			rem_h += fmod(temp_h, (max(1, 2 * i)*block_size[i])); //we add together all the reaminders to check if it is nonzero
+			rem_w += fmod(temp_w, (max(1, 2 * i)*block_size[i]));
+		}
+
+		if (rem_h == 0 && rem_w == 0) //means that we are done -- we found the right width and height that is divisible by all the block sizes
+			done = 1;
+		else
+		{
+			if (rem_h != 0)
+				temp_h++;
+			if (rem_w != 0)
+				temp_w++;
+		}
+	}
+
+	int pad_x = ((int)temp_w - orig_width)/2;
+	int pad_y = ((int)temp_h - orig_height)/2;
+
+	padding_x = pad_x; //save these since they will be used at the end of the block matching to truncate the MV field to get rid of padded regions
+	padding_y = pad_y;
+
+	//Pad the images so that there are an integer number of blocks
+	cv::Mat image1_pad = cv::Mat(image1.rows + pad_y * 2, image1.cols + pad_x * 2, CV_8UC1);
+	cv::Mat image2_pad = cv::Mat(image1.rows + pad_y * 2, image1.cols + pad_x * 2, CV_8UC1);
+
+	cv::copyMakeBorder(image1, image1_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
+	cv::copyMakeBorder(image2, image2_pad, pad_y, pad_y, pad_x, pad_x, cv::BORDER_CONSTANT, cv::Scalar(0));
 
 	//initialize lambda_multiplier to '1' - means no multiply
 	lambda_multiplier = 1;
 
 	//save highest level of hierarchy to vector
 	PyramidLevel temp;
-	temp.image1 = image1; //store image pointers
-	temp.image2 = image2;
-	temp.level_flow = cv::Mat::zeros(image1.rows, image1.cols, CV_32FC2); //store MV pointer
+	temp.image1 = image1_pad; //store image pointers
+	temp.image2 = image2_pad;
+	temp.level_flow = cv::Mat::zeros(image1_pad.rows, image1_pad.cols, CV_32FC2); //store MV pointer
 	temp.block_size = block_size[0]; //store block size
 	temp.search_size = search_size[0]; //store search size
 	temp.lambda = (float)((block_size[0]) / 2);
 	level_data.push_back(temp);
 
 	//For speed up code -- save SAD values so they don't have to be recalculated
-	cv::Mat temparr(image1.rows, image1.cols, CV_32SC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array
+	cv::Mat temparr(image1_pad.rows, image1_pad.cols, CV_32SC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array
 	fast_array.push_back(temparr); //reserve images equal to number of levels
 	//cv::Mat temparr2(image1.rows, image1.cols, CV_32FC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array of MVs
 	//fast_array_MV.push_back(temparr2); 
 
 	//Keep track of the previous image so we can apply the pyrDown operation on previous image
-	cv::Mat prev_image1 = image1.clone();
-	cv::Mat prev_image2 = image2.clone();
+	cv::Mat prev_image1 = image1_pad.clone();
+	cv::Mat prev_image2 = image2_pad.clone();
 
 	for (int i = 1; i < num_levels; i++)
 	{
@@ -52,13 +104,12 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 	}
 
 	//open debugging file -- can safely comment this out if not being used
-	file.open("debug.txt");
+	//file.open("debug.txt");
 
 }
 
 cv::Mat MF::calcMotionBlockMatching()
-{
-	//Note:  This is just an example.  You should consider multiple iterations of the regularization function, and you may also consider splitting the blocks into smaller blocks and performing regularization
+{	
 	for (int i = (int)level_data.size() - 1; i >= 0; i--)
 	{
 		curr_level = i;
@@ -66,8 +117,12 @@ cv::Mat MF::calcMotionBlockMatching()
 		if (i == level_data.size() - 1) //means we don't have any previous motion field to use
 		{
 			//don't need to copy MVs from previous level since there are none
-			//calcLevelBM();
-			calcLevelBM_Parallel();
+			calcLevelBM();
+			//tbb::task_group tg;
+			//tg.run([&]() { calcLevelBM_Parallel(); });
+			//tg.wait();
+
+			//calcLevelBM_Parallel();
 			//print_debug(); //you can put this line and the three lines below back in for testing/debugging purposes
 			//cv::Mat test_img = level_data[curr_level].image1.clone();
 			//draw_MVs(test_img);
@@ -96,15 +151,21 @@ cv::Mat MF::calcMotionBlockMatching()
 			}
 			level_data[curr_level].block_size = init_bsize; //need to reset the block size so that copyMVs() for the next level of the pyramid works with the right size
 
-			//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
-			//draw_MVs(test_img);
-			//cv::imwrite("mv_imageL3.png", test_img);
+			cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
+			draw_MVs(test_img);
+			cv::imwrite("mv_imageL3.png", test_img);
+
+			//draw MC image
+			cv::Mat test_img2 = cv::Mat(level_data[curr_level].image1.rows, level_data[curr_level].image1.cols, CV_8UC1);
+			draw_MVimage(test_img2);
+			cv::imwrite("MC_imageL3.png", test_img2);
+
 		}
 		else
 		{
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
-			//calcLevelBM();
-			calcLevelBM_Parallel();
+			calcLevelBM();
+			//calcLevelBM_Parallel();
 
 			//perform iterative regularization
 			int init_bsize = level_data[curr_level].block_size;
@@ -142,11 +203,18 @@ cv::Mat MF::calcMotionBlockMatching()
 	copy_to_all_pixels(); //copy the MV for the block to all pixels in the block
 
 	//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes
-	//level_data[curr_level].block_size = 8; //just to draw MVs with some spacing
+	//level_data[curr_level].block_size = 32; //just to draw MVs with some spacing
 	//draw_MVs(test_img);
 	//cv::imwrite("mv_imageL1.png", test_img);
 
-	return level_data[curr_level].level_flow;
+	////draw MC image
+	//cv::Mat test_img2 = cv::Mat(level_data[curr_level].image1.rows, level_data[curr_level].image1.cols, CV_8UC1);
+	//draw_MVimage(test_img2);
+	//cv::imwrite("MC_imageL1.png", test_img2);
+
+
+	//truncate the MV field to get rid of the padded regions
+	return level_data[curr_level].level_flow(cv::Rect(padding_x, padding_y, orig_width, orig_height));
 }
 
 void MF::calcLevelBM_Parallel()
@@ -811,6 +879,26 @@ void MF::draw_MVs(cv::Mat &test_img)
 		for (int j = 0; j < level_data[curr_level].image1.cols; j += level_data[curr_level].block_size)
 		{
 			cv::line(test_img, cv::Point(j, i), cv::Point(max(0, min((int)(j + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0]), level_data[curr_level].image1.cols)), max(0, min((int)(i + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1]), level_data[curr_level].image1.rows))), cv::Scalar(255, 0, 0));
+		}
+	}
+}
+
+void MF::draw_MVimage(cv::Mat &test_img)
+{
+	int image2_xpos;
+	int image2_ypos;
+
+	for (int i = 0; i < level_data[curr_level].image1.rows; i += level_data[curr_level].block_size)
+	{
+		for (int j = 0; j < level_data[curr_level].image1.cols; j += level_data[curr_level].block_size)
+		{
+			image2_xpos = j + (int)level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0];
+			image2_ypos = i + (int)level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1];
+
+			if (image2_xpos < 0 || image2_xpos >(level_data[curr_level].image1.cols - level_data[curr_level].block_size) || image2_ypos < 0 || image2_ypos >(level_data[curr_level].image1.rows - level_data[curr_level].block_size))
+				continue;
+
+			level_data[curr_level].image2(cv::Rect(image2_xpos, image2_ypos, level_data[curr_level].block_size, level_data[curr_level].block_size)).copyTo(test_img(cv::Rect(j, i, level_data[curr_level].block_size, level_data[curr_level].block_size)));
 		}
 	}
 }
