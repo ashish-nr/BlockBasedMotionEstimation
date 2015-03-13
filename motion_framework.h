@@ -13,6 +13,11 @@ class MF
 	  cv::Mat calcMotionBlockMatching(); //Perform block matching for the whole hierarchy/pyramid
 		~MF();
 
+        int padded_height;
+        int padded_width;
+        int padding_x;
+        int padding_y;
+
   private:
 		void copyMVs(); //Copy scaled MVs (by a factor of two) from previous level of hierarchy to next highest resolution level of hierarchy
 		void calcLevelBM(); //Calculate block matching for a single level of the hierarchy
@@ -36,9 +41,7 @@ class MF
 		//variable that will be used to truncate the padded MVs at the end
 		int orig_height;
 		int orig_width;
-		int padding_x;
-		int padding_y;
-
+      
 		//variables used to speed up computation
 		std::vector<cv::Mat> fast_array;
 		//std::vector<cv::Mat> fast_array_MV;
