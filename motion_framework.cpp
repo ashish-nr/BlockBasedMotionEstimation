@@ -30,8 +30,8 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 
 		for (int i = 0; i < num_levels; i++)
 		{
-			rem_h += fmod(temp_h, (max(1, 2 * i)*block_size[i])); //we add together all the reaminders to check if it is nonzero
-			rem_w += fmod(temp_w, (max(1, 2 * i)*block_size[i]));
+			rem_h += fmod(temp_h, pow(2, i)*block_size[i]); //we add together all the reaminders to check if it is nonzero
+			rem_w += fmod(temp_w, pow(2, i)*block_size[i]);
 		}
 
 		if (rem_h == 0 && rem_w == 0) //means that we are done -- we found the right width and height that is divisible by all the block sizes
@@ -44,7 +44,9 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 				temp_w++;
 		}
 	}
-
+     
+    padded_height = temp_h; //save padded height and width
+    padded_width = temp_w;
 	int pad_x = ((int)temp_w - orig_width)/2;
 	int pad_y = ((int)temp_h - orig_height)/2;
 
@@ -151,14 +153,14 @@ cv::Mat MF::calcMotionBlockMatching()
 			}
 			level_data[curr_level].block_size = init_bsize; //need to reset the block size so that copyMVs() for the next level of the pyramid works with the right size
 
-			cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
-			draw_MVs(test_img);
-			cv::imwrite("mv_imageL3.png", test_img);
+			//cv::Mat test_img = level_data[curr_level].image1.clone(); //this line and the three lines above are for testing/debugging purposes			
+			//draw_MVs(test_img);
+			//cv::imwrite("mv_imageL3.png", test_img);
 
-			//draw MC image
-			cv::Mat test_img2 = cv::Mat(level_data[curr_level].image1.rows, level_data[curr_level].image1.cols, CV_8UC1);
-			draw_MVimage(test_img2);
-			cv::imwrite("MC_imageL3.png", test_img2);
+			////draw MC image
+			//cv::Mat test_img2 = cv::Mat(level_data[curr_level].image1.rows, level_data[curr_level].image1.cols, CV_8UC1);
+			//draw_MVimage(test_img2);
+			//cv::imwrite("MC_imageL3.png", test_img2);
 
 		}
 		else
@@ -166,7 +168,8 @@ cv::Mat MF::calcMotionBlockMatching()
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
 			calcLevelBM();
 			//calcLevelBM_Parallel();
-
+            //print_debug(); //you can put this line in for testing/debugging purposes
+            
 			//perform iterative regularization
 			int init_bsize = level_data[curr_level].block_size;
 			float init_lambda = level_data[curr_level].lambda;
@@ -212,9 +215,7 @@ cv::Mat MF::calcMotionBlockMatching()
 	//draw_MVimage(test_img2);
 	//cv::imwrite("MC_imageL1.png", test_img2);
 
-
-	//truncate the MV field to get rid of the padded regions
-	return level_data[curr_level].level_flow(cv::Rect(padding_x, padding_y, orig_width, orig_height));
+    return level_data[curr_level].level_flow;
 }
 
 void MF::calcLevelBM_Parallel()
