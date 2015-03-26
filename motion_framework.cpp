@@ -16,7 +16,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 	double temp_w = (double)orig_width;
 
 	int done = 0;
-	while (!done) 
+	while (!done)
 	{
 		if (temp_h == 2 * orig_height || temp_w == 2 * orig_width) //the 2*orig_width and height is there just in case we can't find a multiple -- we need to stop somewhere
 		{
@@ -44,11 +44,11 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 				temp_w++;
 		}
 	}
-     
-    padded_height = temp_h; //save padded height and width
-    padded_width = temp_w;
-	int pad_x = ((int)temp_w - orig_width)/2;
-	int pad_y = ((int)temp_h - orig_height)/2;
+
+	padded_height = temp_h; //save padded height and width
+	padded_width = temp_w;
+	int pad_x = ((int)temp_w - orig_width) / 2;
+	int pad_y = ((int)temp_h - orig_height) / 2;
 
 	padding_x = pad_x; //save these since they will be used at the end of the block matching to truncate the MV field to get rid of padded regions
 	padding_y = pad_y;
@@ -98,7 +98,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 		fast_array.push_back(temparr); //reserve images equal to number of levels
 		//cv::Mat temparr2(image1.rows / 2, image1.cols / 2, CV_32FC4, cv::Scalar(0, 0, 0, 0)); //initialize memory to hold fast array of MVs
 		//fast_array_MV.push_back(temparr2);
-	
+
 		prev_image1 = temp.image1.clone(); //save previous values for next iteration
 		prev_image2 = temp.image2.clone();
 
@@ -111,7 +111,7 @@ MF::MF(cv::Mat &image1, cv::Mat &image2, const int search_size[], const int bloc
 }
 
 cv::Mat MF::calcMotionBlockMatching()
-{	
+{
 	for (int i = (int)level_data.size() - 1; i >= 0; i--)
 	{
 		curr_level = i;
@@ -123,6 +123,9 @@ cv::Mat MF::calcMotionBlockMatching()
 			//tbb::task_group tg;
 			//tg.run([&]() { calcLevelBM_Parallel(); });
 			//tg.wait();
+
+
+			overlap_img = calculate_level_overlap();			//HERE: Location-1 for overlap creation
 
 			//calcLevelBM_Parallel();
 			//print_debug(); //you can put this line and the three lines below back in for testing/debugging purposes
@@ -168,8 +171,11 @@ cv::Mat MF::calcMotionBlockMatching()
 			copyMVs(); //copy MVs from previous level to next level in hierarchy (and multiply their magnitude by a factor of two)
 			calcLevelBM();
 			//calcLevelBM_Parallel();
-            //print_debug(); //you can put this line in for testing/debugging purposes
-            
+			//print_debug(); //you can put this line in for testing/debugging purposes
+
+
+			overlap_img = calculate_level_overlap();			//HERE: Location-1 for overlap creation
+
 			//perform iterative regularization
 			int init_bsize = level_data[curr_level].block_size;
 			float init_lambda = level_data[curr_level].lambda;
@@ -180,7 +186,7 @@ cv::Mat MF::calcMotionBlockMatching()
 
 				//perform iterative regularization			
 				while (level_data[curr_level].block_size > 1)
-				{					
+				{
 					for (int l = 0; l < 2; l++) //perform four iterations of regularization
 					{
 						lambda_multiplier = l + 1;
@@ -215,7 +221,7 @@ cv::Mat MF::calcMotionBlockMatching()
 	//draw_MVimage(test_img2);
 	//cv::imwrite("MC_imageL1.png", test_img2);
 
-    return level_data[curr_level].level_flow;
+	return level_data[curr_level].level_flow;
 }
 
 void MF::calcLevelBM_Parallel()
@@ -236,7 +242,7 @@ void MF::calcLevelBM()
 			BlockPosition result = find_min_block_spiral(i, j, image2_ypos, image2_xpos); //returns i, j position of block found using spiral search
 			//Calculate MV
 			cv::Vec2f mv = cv::Vec2f((float)result.pos_x - j, (float)result.pos_y - i);
-			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;		
+			level_data[curr_level].level_flow.at<cv::Vec2f>(i, j) = mv;
 
 			//fill_block_MV(i, j, level_data[curr_level].block_size, mv); //assign MV to every pixel in block -- this is necessary because of the padding of images.  We can't guarantee that the the block at the next level will start on a position where there's a motion vector if we just assign a motion vector to the top left corner of the block on previous level.
 		}
@@ -263,7 +269,7 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 		{
 			//calculate difference between block i,j in image1 and block k,l in image 2
 			SAD_value = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(l, k, block_size, block_size)), cv::NORM_L1);
-			
+
 			//cv::absdiff(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, level_data[curr_level].block_size, level_data[curr_level].block_size)), level_data[curr_level].image2(cv::Rect(l, k, level_data[curr_level].block_size, level_data[curr_level].block_size)), curr_diff);
 			//SAD_value = cv::sum(curr_diff);
 			if (SAD_value/*.val[0]*/ < SAD_min)
@@ -284,7 +290,7 @@ BlockPosition MF::find_min_block(int image1_ypos, int image1_xpos, int image2_yp
 
 	//store frame2 position, SAD value, and block side in the fast array for future quick lookup
 	fast_array[curr_level].at<cv::Vec4i>(image1_ypos, image1_xpos) = cv::Vec4i(min_x, min_y, SAD_min, block_size);
-		
+
 	BlockPosition pos; //Create class object to return values
 	pos.pos_x = min_x;
 	pos.pos_y = min_y;
@@ -300,7 +306,7 @@ BlockPosition MF::find_min_block_spiral(int image1_ypos, int image1_xpos, int im
 	int block_size = level_data[curr_level].block_size; //speed up
 	int width = level_data[curr_level].image1.cols;
 	int height = level_data[curr_level].image1.rows;
-		
+
 	if (image2_xpos < 0 || image2_ypos < 0 || (image2_xpos + block_size) > width || (image2_ypos + block_size) > height) //prevent spiral search from going outside of image
 	{
 		BlockPosition temp;
@@ -315,9 +321,9 @@ BlockPosition MF::find_min_block_spiral(int image1_ypos, int image1_xpos, int im
 	int SAD_min = (int)cv::norm(level_data[curr_level].image1(cv::Rect(image1_xpos, image1_ypos, block_size, block_size)), level_data[curr_level].image2(cv::Rect(min_x, min_y, block_size, block_size)), cv::NORM_L1); //current SAD value
 
 	int l = min_x;
-	int k = min_y; 
-	int m, t;	
-	
+	int k = min_y;
+	int m, t;
+
 	//This first outer loop is used to do the spiral search
 	//We are repeating patterns of moving right,down, left, then up.
 	//At the very end, we go right once more to finish things off.
@@ -408,7 +414,7 @@ BlockPosition MF::find_min_block_spiral(int image1_ypos, int image1_xpos, int im
 			min_x = l;
 			min_y = k;
 		}
-	}			
+	}
 
 	//store frame2 position, SAD value, and block side in the fast array for future quick lookup
 	fast_array[curr_level].at<cv::Vec4i>(image1_ypos, image1_xpos) = cv::Vec4i(min_x, min_y, SAD_min, block_size);
@@ -431,10 +437,10 @@ void MF::regularize_MVs()
 	std::vector<cv::Vec2f> candidates;
 	candidates.reserve(9);
 
-	for (int i = 0; i < height; i+=block_size)
+	for (int i = 0; i < height; i += block_size)
 	{
-		for (int j = 0; j < width; j+=block_size)
-		{			
+		for (int j = 0; j < width; j += block_size)
+		{
 			//this is the normal case and where the loop will spend most of the time -- the case where we are not on any borders
 			if (i - block_size >= 0 && j - block_size >= 0 && j + block_size < width && i + block_size < height)
 			{
@@ -513,7 +519,7 @@ void MF::regularize_MVs()
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i - block_size, (float)j));
 			}
 			//Handle the case of the bottom right corner
-			else 
+			else
 			{
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j));
 				candidates.push_back(level_data[curr_level].level_flow.at<cv::Vec2f>((float)i, (float)j - block_size));
@@ -534,7 +540,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	//store all the energies computed.  An energy is the SAD + lambda*Smoothness term
 	std::vector<float> energy;
 	energy.reserve(9);
-	
+
 	//positions in image2
 	//int pos_x2, pos_y2;
 
@@ -544,6 +550,9 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 
 	//place to hold smoothness value
 	float Smoothness;
+
+	//place to hold Overlap value
+	float Overlap;
 
 	//Hold the overall energy - SAD + Smoothness
 	float Energy;
@@ -560,7 +569,7 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 
 	int height = level_data[curr_level].image1.rows; //store height and width for bounds checking
 	int width = level_data[curr_level].image1.cols;
-	
+
 	int csize = (int)candidates.size(); //store to speed things up
 
 	cv::Vec2f pos1 = cv::Vec2f((float)pos_x1, (float)pos_y1);
@@ -569,11 +578,11 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	//check if there is a min_candidate already stored in the fast_array_MV for this block size (block size != 0), next compare the current candidates to the MVs in the fast_array_MV
 	//if (fast_array_MV[curr_level].at<cv::Vec4f>(pos_y1, pos_x1)[3] == (float)block_size && check_prev_match(pos_x1, pos_y1)) //means that a match exists
 	//return;
-	
+
 	for (int i = 0; i < csize; i++)
 	{
 		//block position in image2
-		pos2 = pos1 + candidates[i];	
+		pos2 = pos1 + candidates[i];
 
 		if ((int)pos2[0] < 0 || (int)pos2[0] > (width - block_size) || (int)pos2[1] < 0 || (int)pos2[1] > (height - block_size)) //need to make sure that position doesn't go outside of image
 		{
@@ -603,8 +612,13 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 
 			//Calculate smoothness term - pass current MV and the candidate structure
 			Smoothness = calculate_smoothness(i, candidates);
+			
+			Overlap = calculate_candidate_overlap(i, candidates, pos_x1, pos_y1);				//Calculate Overlap of the candidate (average of overlap_image pixels within block)
 
-			Energy = (float)SAD_value/*.val[0]*/ + lambda*(float)lambda_multiplier*Smoothness;
+			//std::cout << Overlap << std::endl;
+			Energy = (float)SAD_value/*.val[0]*/ + lambda*(float)lambda_multiplier*Smoothness + Overlap;	//works better without SAD multiplied. Lower endpoint error
+			//Energy = (float)SAD_value/*.val[0]*/ + lambda*(float)lambda_multiplier*Smoothness + Overlap*(float)SAD_value;	
+			//Energy = (float)SAD_value/*.val[0]*/ + lambda*(float)lambda_multiplier*Smoothness;
 			energy.push_back(Energy); //this is super inefficient and should be fixed
 		}
 	}
@@ -619,6 +633,141 @@ void MF::find_min_candidate(int pos_x1, int pos_y1, std::vector<cv::Vec2f> &cand
 	//fast_array_MV[curr_level].at<cv::Vec4f>(pos_y1, pos_x1) = cv::Vec4f(candidates[min_pos][0], candidates[min_pos][1], (float)min_pos, (float)block_size);
 
 }
+
+
+
+cv::Mat MF::calculate_level_overlap()
+{
+	overlap_img = cv::Mat::zeros(level_data[curr_level].level_flow.size(), CV_8U);	
+
+
+	//cv::Vec2f pos1 = cv::Vec2f((float)j, (float)i);
+	cv::Point2f pos2;
+	//int block_size = level_data[curr_level + 1].block_size;
+
+
+	//for (int i = 0; i < level_data[curr_level].image1.rows; i += level_data[curr_level].block_size) //for each block in image 1,
+	//{
+	//	for (int j = 0; j < level_data[curr_level].image1.cols; j += level_data[curr_level].block_size)
+	//	{
+	for (int i = 0; i < level_data[curr_level].level_flow.rows; i += level_data[curr_level].block_size) //for each block,
+	{
+		for (int j = 0; j < level_data[curr_level].level_flow.cols; j += level_data[curr_level].block_size)
+		{
+			//pos2 = cv::Point2f(j,i) + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j);
+			pos2.y = i + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[1];			//pos2 = pos1 + mv(of current block)
+			pos2.x = j + level_data[curr_level].level_flow.at<cv::Vec2f>(i, j)[0];
+
+			//std::cout << level_data[curr_level].image1.cols << "," << level_data[curr_level].image1.rows << std::endl;
+			//cv::waitKey(0);
+			if ((pos2.x < level_data[curr_level].level_flow.cols) && (pos2.y < level_data[curr_level].level_flow.rows))
+			{
+				//std::cout << pos2.x << "," << pos2.y << std::endl;
+				for (int y_co = max(0,(int)pos2.y); y_co < min((int)pos2.y + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); y_co++)			//For all pixels within block
+					for (int x_co = max(0,(int)pos2.x); x_co < min((int)pos2.x + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); x_co++)
+						overlap_img.at<uchar>(y_co, x_co)++;
+			}
+		}
+	}
+
+	//// DISPLAY PURPOSES ONLY!!   making overlaps visible. Curr_level goes from 3 -> 0.
+	//for (int y_co = 0; y_co < overlap_img.rows; y_co++)
+	//	for (int x_co = 0; x_co < overlap_img.cols; x_co++)
+	//		overlap_img.at<uchar>(y_co, x_co) = 20 * overlap_img.at<uchar>(y_co, x_co) + 128;
+	
+	//if (curr_level == 0)
+	//{
+	//	cv::namedWindow("curr_Level 0", 1);
+	//	cv::imshow("curr_Level 0", overlap_img);
+	//	//cv::imwrite("C:\\Users\\ashish\\Desktop\\curr_level 0.jpg", overlap_img);
+	//	//cv::waitKey(0);
+	//}
+
+	//if (curr_level == 1)
+	//{
+	//	cv::namedWindow("curr_Level 1", 1);
+	//	cv::imshow("curr_Level 1", overlap_img);
+	//	//cv::imwrite("C:\\Users\\ashish\\Desktop\\curr_level 1.jpg", overlap_img);
+	//}
+
+	//if (curr_level == 2)
+	//{
+	//	cv::namedWindow("curr_Level 2", 1);
+	//	cv::imshow("curr_Level 2", overlap_img);
+	//	//cv::imwrite("C:\\Users\\ashish\\Desktop\\curr_level 2.jpg", overlap_img);
+	//}
+
+	//if (curr_level == 3)
+	//{
+	//	cv::namedWindow("curr_Level 3", 1);
+	//	cv::imshow("curr_Level 3", overlap_img);
+	//	//cv::imwrite("C:\\Users\\ashish\\Desktop\\curr_level 3.jpg", overlap_img);
+	//}
+
+	return overlap_img;
+}
+
+
+float MF::calculate_candidate_overlap(int current_candidate, std::vector<cv::Vec2f> &candidates, int pos_X1, int pos_Y1)
+{
+	//std::cout << "candover started \t" << std::endl;
+	float overlap = 0;
+	cv::Vec2f MV = candidates[current_candidate];
+	cv::Point2f currBlockPos = cv::Point2f(pos_X1,pos_Y1);
+	//cv::Mat tempOvlapStore = cv::Mat::zeros(level_data[curr_level].block_size, level_data[curr_level].block_size,CV_8U);
+	//int row = 0, col = 0, count1 = 0, count2 = 0, count3 = 0;
+
+	//for (int row = max(0, currBlockPos.y); row < min(row + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//clear prev from overlap_img. Will compensate for the same at the end
+	//	for (int col = max(0, currBlockPos.x); col < min(col + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+	//	{
+	for (int row = max(0, currBlockPos.y); row < min(currBlockPos.y + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//clear prev from overlap_img. Will compensate for the same at the end
+		for (int col = max(0, currBlockPos.x); col < min(currBlockPos.x + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+		{
+			//std::cout << count1 << std::endl;
+			//count1++;
+			//tempOvlapStore.at<uchar>(row, col) = overlap_img.at<uchar>(row + currBlockPos.y + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[1], col + currBlockPos.x + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[0]);
+			overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[0])))--;											//EXCEPTION AT THIS LINE. Accessing pixels outside range
+		}
+
+	cv::Vec2f curr_MV;								//not really useful in this version of code
+	curr_MV = candidates[current_candidate];
+		
+	//for (int row = max(0, currBlockPos.y); row < min(row + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//Putting in new candidate's MVs. Getting them out after accumulation. Probably saves time of another 2 nested for-loops
+	//	for (int col = max(0, currBlockPos.x); col < min(col + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+	//	{
+	for (int row = max(0, currBlockPos.y); row < min(currBlockPos.y + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//Putting in new candidate's MVs. Getting them out after accumulation. Probably saves time of another 2 nested for-loops
+		for (int col = max(0, currBlockPos.x); col < min(currBlockPos.x + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+		{
+			//std::cout << count2 << std::endl;
+			//count2++;
+			//overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + curr_MV[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + curr_MV[0])))++;
+			//overlap += (float)overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + curr_MV[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + curr_MV[0])));
+			//overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + curr_MV[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + curr_MV[0])))--;
+			overlap += overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + curr_MV[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + curr_MV[0]))) + 1;
+		}
+
+	//for (int row = max(0, currBlockPos.y); row < min(row + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//Compensation
+	//	for (int col = max(0, currBlockPos.x); col < min(col + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+	//	{
+	for (int row = max(0, currBlockPos.y); row < min(currBlockPos.y + level_data[curr_level].block_size, level_data[curr_level].level_flow.rows); row++)	//Compensation
+		for (int col = max(0, currBlockPos.x); col < min(currBlockPos.x + level_data[curr_level].block_size, level_data[curr_level].level_flow.cols); col++)
+		{
+			//std::cout << count3 << std::endl;
+			//count3++;
+			//overlap_img.at<uchar>(row + currBlockPos.y + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[1], col + currBlockPos.x + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[0]) = tempOvlapStore.at<uchar>(row, col);
+			//overlap_img.at<uchar>(row + currBlockPos.y + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[1], col + currBlockPos.x + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[0])++;
+			overlap_img.at<uchar>(max(0, min(level_data[curr_level].level_flow.rows, row + currBlockPos.y + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[1])), max(0, min(level_data[curr_level].level_flow.cols, col + currBlockPos.x + level_data[curr_level].level_flow.at<cv::Vec2f>(currBlockPos.y, currBlockPos.x)[0])))++;
+		}
+		
+	overlap /= (level_data[curr_level].block_size * level_data[curr_level].block_size); //divide cumulative overlap in block by the number of pixeld
+	//overlap++;
+
+	//std::cout << overlap << std::endl;
+
+	return overlap;
+}
+
+
 
 float MF::calculate_smoothness(int current_candidate, std::vector<cv::Vec2f> &candidates)
 {
@@ -816,16 +965,16 @@ void MF::copy_to_all_pixels()
 {
 	int block_size = level_data[curr_level].block_size;
 
-	for (int i = 0; i < level_data[curr_level].level_flow.rows; i+=block_size)
+	for (int i = 0; i < level_data[curr_level].level_flow.rows; i += block_size)
 	{
-		for (int j = 0; j < level_data[curr_level].level_flow.cols; j+=block_size)
+		for (int j = 0; j < level_data[curr_level].level_flow.cols; j += block_size)
 		{
 			fill_block_MV(i, j, block_size, level_data[curr_level].level_flow.at<cv::Vec2f>(i, j));
 		}
 	}
 }
 
-void MF::copyMVs() 
+void MF::copyMVs()
 {
 	int block_size = level_data[curr_level + 1].block_size;
 	for (int i = 0; i < level_data[curr_level + 1].image1.rows; i += block_size)
