@@ -21,9 +21,9 @@ int main()
 	int num_levels = 4;
 
 	//read first image
-	image1 = cv::imread("C:\\Users\\ashish\\Documents\\Visual Studio 2013\\Projects\\BBME\\other-color-twoframes\\other-data\\Venus\\frame10.png", 0);
+	image1 = cv::imread("..\\middlebury\\other-color-twoframes\\other-data\\Venus\\frame10.png", 0);
 	//read second image
-	image2 = cv::imread("C:\\Users\\ashish\\Documents\\Visual Studio 2013\\Projects\\BBME\\other-color-twoframes\\other-data\\Venus\\frame11.png", 0);
+	image2 = cv::imread("..\\middlebury\\other-color-twoframes\\other-data\\Venus\\frame11.png", 0);
 
 	int orig_height = image1.rows;
 	int orig_width = image1.cols;
@@ -78,7 +78,7 @@ int main()
 
 	//Calculate Mean-square error for our calculated MV field and the ground truth motion vector field (.flo file provided by Middlebury)
 	cv::Mat gtruth;
-	file.ReadFlowFile(gtruth, "C:\\Users\\ashish\\Documents\\Visual Studio 2013\\Projects\\BBME\\middlebury\\gt-flow\\Venus\\flow10.flo");
+	file.ReadFlowFile(gtruth, "..\\middlebury\\gt-flow\\Venus\\flow10.flo");
 	double MSE = file.CalculateMSE(gtruth, subpix_MVs);
 	//double MSE = file.CalculateMSE(gtruth,flow_res);
 
